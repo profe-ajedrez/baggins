@@ -1,0 +1,4 @@
+/target
+*.svg
+perf.data
+Cargo.lock
