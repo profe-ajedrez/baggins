@@ -18,9 +18,10 @@
 //! 
 use std::{fmt, str::FromStr};
 
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use discount::DiscountComputer;
 use tax::{tax_stage, TaxComputer};
+use serde::Serialize;
 
 pub mod discount;
 pub mod tax;
@@ -79,6 +80,46 @@ pub struct Calculation {
     pub total_discount_percent: BigDecimal,
 }
 
+impl Calculation {
+    pub fn new() -> Self {
+        Self { net: BigDecimal::zero(), brute: BigDecimal::zero(), tax: BigDecimal::zero(), discount: BigDecimal::zero(), net_wout_disc: BigDecimal::zero(), brute_wout_disc: BigDecimal::zero(), tax_wout_disc: BigDecimal::zero(), unit_value: BigDecimal::zero(), total_discount_percent: BigDecimal::zero() }
+    }
+
+    pub fn to_f64(&self) -> Option<CalculationF64> {
+        Some(CalculationF64{ 
+            net: self.net.to_f64()?, 
+            brute: self.brute.to_f64()?, 
+            tax: self.tax.to_f64()?, 
+            discount: self.discount.to_f64()?, 
+            net_wout_disc: self.net_wout_disc.to_f64()?, 
+            brute_wout_disc: self.brute_wout_disc.to_f64()?, 
+            tax_wout_disc: self.tax_wout_disc.to_f64()?, 
+            unit_value: self.unit_value.to_f64()?, 
+            total_discount_percent: self.total_discount_percent.to_f64()? 
+        })
+    }
+
+    pub fn to_string(&self) -> CalculationString {
+        CalculationString{ 
+            net: self.net.to_string(), 
+            brute: self.brute.to_string(), 
+            tax: self.tax.to_string(), 
+            discount: self.discount.to_string(), 
+            net_wout_disc: self.net_wout_disc.to_string(), 
+            brute_wout_disc: self.brute_wout_disc.to_string(), 
+            tax_wout_disc: self.tax_wout_disc.to_string(), 
+            unit_value: self.unit_value.to_string(), 
+            total_discount_percent: self.total_discount_percent.to_string(), 
+        }
+    }
+}
+
+impl Default for Calculation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl fmt::Display for Calculation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {} )",
@@ -89,7 +130,7 @@ impl fmt::Display for Calculation {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Serialize)]
 pub struct CalculationF64 {
     pub net: f64,
     pub brute: f64,
@@ -98,8 +139,21 @@ pub struct CalculationF64 {
     pub net_wout_disc: f64,
     pub brute_wout_disc: f64,
     pub tax_wout_disc: f64,
-    pub unit_value: BigDecimal,
-    pub total_discount_percent: BigDecimal,
+    pub unit_value: f64,
+    pub total_discount_percent: f64,
+}
+
+#[derive(Debug,Serialize)]
+pub struct CalculationString {
+    pub net: String,
+    pub brute: String,
+    pub tax: String,
+    pub discount: String,
+    pub net_wout_disc: String,
+    pub brute_wout_disc: String,
+    pub tax_wout_disc: String,
+    pub unit_value: String,
+    pub total_discount_percent: String,
 }
 
 impl fmt::Display for CalculationF64 {
