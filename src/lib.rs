@@ -67,7 +67,7 @@ pub fn inverse() -> BigDecimal {
     BigDecimal::from_str("-1.0").unwrap()
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct Calculation {
     pub net: BigDecimal,
     pub brute: BigDecimal,
