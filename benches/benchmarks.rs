@@ -2,9 +2,8 @@ use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
 use calculus::{
-    Calculator,
     discount::{ComputedDiscount, DiscountComputer, Type},
-    tax,
+    tax, Calculator,
 };
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
@@ -15,7 +14,7 @@ fn bench_discount(c: &mut Criterion) {
 
     let mut d = ComputedDiscount::new();
     let _ = d.add_discount(BigDecimal::from_str("10.2").unwrap(), Type::Percentual);
-    let _ = d.add_str_discount("10.56", Type::AmountUnit);
+    let _ = d.add_discount_from_str("10.56", Type::AmountUnit);
     let _ = d.add_discount(BigDecimal::from_str("1.5").unwrap(), Type::AmountLine);
 
     c.bench_function("bench_discount", |b| {
@@ -31,18 +30,18 @@ fn bench_compute(c: &mut Criterion) {
 
     let mut cl = calculus::DetailCalculator::new();
     let _ = cl.add_discount(BigDecimal::from_str("10.2").unwrap(), Type::Percentual);
-    let _ = cl.add_str_discount("10.56", Type::AmountUnit);
+    let _ = cl.add_discount_from_str("10.56", Type::AmountUnit);
     let _ = cl.add_discount(BigDecimal::from_str("1.5").unwrap(), Type::AmountLine);
 
     let _ = cl
-        .add_str_tax(
+        .add_tax_from_str(
             "16.0",
             tax::tax_stage::Stage::OverTaxable,
             tax::Type::Percentual,
         )
         .unwrap();
 
-    let _ = cl.add_str_tax(
+    let _ = cl.add_tax_from_str(
         "1.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,

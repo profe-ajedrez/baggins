@@ -7,23 +7,23 @@ use calculus::{discount, tax, Calculator};
 fn test_calculus_compute() {
     let mut c = calculus::DetailCalculator::new();
 
-    let err = c.add_str_discount("10.0", discount::Type::Percentual);
+    let err = c.add_discount_from_str("10.0", discount::Type::Percentual);
     assert!(err.is_none(), "error adding percentual discount");
 
-    let err = c.add_str_discount("1.0", discount::Type::AmountUnit);
+    let err = c.add_discount_from_str("1.0", discount::Type::AmountUnit);
     assert!(err.is_none(), "error adding amount unit discount");
 
     // let err: Option<discount::DiscountError> = c.add_str_discount("2.0", discount::Type::AmountLine);
     // assert!(err.is_none(), "error adding amount line discount");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "16.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::Percentual,
     );
     assert!(err.is_some(), "error adding percentual 16% tax");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "1.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
@@ -50,23 +50,23 @@ fn test_calculus_compute() {
 fn test_calculus_compute_from_brute() {
     let mut c = calculus::DetailCalculator::new();
 
-    let err = c.add_str_discount("10.0", discount::Type::Percentual);
+    let err = c.add_discount_from_str("10.0", discount::Type::Percentual);
     assert!(err.is_none(), "error adding percentual discount");
 
-    let err = c.add_str_discount("1.0", discount::Type::AmountUnit);
+    let err = c.add_discount_from_str("1.0", discount::Type::AmountUnit);
     assert!(err.is_none(), "error adding amount unit discount");
 
     // let err: Option<discount::DiscountError> = c.add_str_discount("2.0", discount::Type::AmountLine);
     // assert!(err.is_none(), "error adding amount line discount");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "16.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::Percentual,
     );
     assert!(err.is_some(), "error adding percentual 16% tax");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "1.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
@@ -89,29 +89,28 @@ fn test_calculus_compute_from_brute() {
     }
 }
 
-
-
 #[test]
 fn test_calculus_compute_with_line_discount() {
     let mut c = calculus::DetailCalculator::new();
 
-    let err = c.add_str_discount("10.0", discount::Type::Percentual);
+    let err = c.add_discount_from_str("10.0", discount::Type::Percentual);
     assert!(err.is_none(), "error adding percentual discount");
 
-    let err = c.add_str_discount("1.0", discount::Type::AmountUnit);
+    let err = c.add_discount_from_str("1.0", discount::Type::AmountUnit);
     assert!(err.is_none(), "error adding amount unit discount");
 
-    let err: Option<discount::DiscountError> = c.add_str_discount("2.0", discount::Type::AmountLine);
+    let err: Option<discount::DiscountError> =
+        c.add_discount_from_str("2.0", discount::Type::AmountLine);
     assert!(err.is_none(), "error adding amount line discount");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "16.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::Percentual,
     );
     assert!(err.is_some(), "error adding percentual 16% tax");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "1.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
@@ -134,29 +133,28 @@ fn test_calculus_compute_with_line_discount() {
     }
 }
 
-
-
 #[test]
 fn test_calculus_compute_with_line_discount_from_brute() {
     let mut c = calculus::DetailCalculator::new();
 
-    let err = c.add_str_discount("10.0", discount::Type::Percentual);
+    let err = c.add_discount_from_str("10.0", discount::Type::Percentual);
     assert!(err.is_none(), "error adding percentual discount");
 
-    let err = c.add_str_discount("1.0", discount::Type::AmountUnit);
+    let err = c.add_discount_from_str("1.0", discount::Type::AmountUnit);
     assert!(err.is_none(), "error adding amount unit discount");
 
-    let err: Option<discount::DiscountError> = c.add_str_discount("2.0", discount::Type::AmountLine);
+    let err: Option<discount::DiscountError> =
+        c.add_discount_from_str("2.0", discount::Type::AmountLine);
     assert!(err.is_none(), "error adding amount line discount");
 
-    let err: Option<tax::TaxError> = c.add_str_tax(
+    let err: Option<tax::TaxError> = c.add_tax_from_str(
         "16.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::Percentual,
     );
     assert!(err.is_some(), "error adding percentual 16% tax");
 
-    let err = c.add_str_tax(
+    let err = c.add_tax_from_str(
         "1.0",
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
@@ -178,4 +176,3 @@ fn test_calculus_compute_with_line_discount_from_brute() {
         }
     }
 }
-

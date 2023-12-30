@@ -26,6 +26,24 @@ impl fmt::Display for Type {
     }
 }
 
+impl Type {
+    pub fn from_i8(r#type: i8) -> Option<Self> {
+        if r#type == 0 {
+            return Some(Self::Percentual);
+        }
+
+        if r#type == 1 {
+            return Some(Self::AmountLine);
+        }
+
+        if r#type == 2 {
+            return Some(Self::AmountUnit);
+        }
+
+        None
+    }
+}
+
 #[derive(Debug)]
 pub enum DiscountError {
     NegativeDiscountable(String),
@@ -73,8 +91,8 @@ impl fmt::Display for DiscountError {
 
 /// Represents a thing able to calculates discounts
 pub trait DiscountComputer {
-    fn add_f64_discount(&mut self, discount: f64, discount_type: Type) -> Option<DiscountError>;
-    fn add_str_discount<S: Into<String>>(
+    fn add_discount_from_f64(&mut self, discount: f64, discount_type: Type) -> Option<DiscountError>;
+    fn add_discount_from_str<S: Into<String>>(
         &mut self,
         discount: S,
         discount_type: Type,
@@ -183,7 +201,7 @@ impl Default for ComputedDiscount {
 }
 
 impl DiscountComputer for ComputedDiscount {
-    fn add_str_discount<S: Into<String>>(
+    fn add_discount_from_str<S: Into<String>>(
         &mut self,
         discount: S,
         discount_type: Type,
@@ -196,7 +214,7 @@ impl DiscountComputer for ComputedDiscount {
         }
     }
 
-    fn add_f64_discount(&mut self, discount: f64, discount_type: Type) -> Option<DiscountError> {
+    fn add_discount_from_f64(&mut self, discount: f64, discount_type: Type) -> Option<DiscountError> {
         let opt_d = BigDecimal::from_f64(discount);
 
         match opt_d {

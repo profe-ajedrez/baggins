@@ -7,7 +7,7 @@ use std::str::FromStr;
 #[test]
 fn test_tax_computer_errors() {
     let mut tax_calculator = calculus::tax::ComputedTax::new();
-    let err = tax_calculator.add_f64_tax(-18.0, Stage::OverTaxable, Type::Percentual);
+    let err = tax_calculator.add_tax_from_f64(-18.0, Stage::OverTaxable, Type::Percentual);
 
     match err {
         Some(_) => {}
@@ -21,13 +21,13 @@ fn test_tax_computer_errors() {
 fn test_tax_computer_adding_tax_f64() {
     let mut tax_calculator = calculus::tax::ComputedTax::new();
 
-    let err = tax_calculator.add_f64_tax(18.0, Stage::OverTaxable, Type::Percentual);
+    let err = tax_calculator.add_tax_from_f64(18.0, Stage::OverTaxable, Type::Percentual);
     assert!(err.is_some(), "error triggered adding first f64 tax");
 
-    let err = tax_calculator.add_f64_tax(10.0, Stage::OverTaxable, Type::Percentual);
+    let err = tax_calculator.add_tax_from_f64(10.0, Stage::OverTaxable, Type::Percentual);
     assert!(err.is_some(), "error triggered adding second f64 tax");
 
-    let err = tax_calculator.add_f64_tax(0.5, Stage::OverTaxable, Type::AmountUnit);
+    let err = tax_calculator.add_tax_from_f64(0.5, Stage::OverTaxable, Type::AmountUnit);
     assert!(err.is_some(), "error triggered adding third f64 tax");
 }
 
@@ -35,13 +35,13 @@ fn test_tax_computer_adding_tax_f64() {
 fn test_tax_computer_calculate_over_taxable_f64() {
     let mut tax_calculator = calculus::tax::ComputedTax::new();
 
-    let err = tax_calculator.add_f64_tax(18.0, Stage::OverTaxable, Type::Percentual);
+    let err = tax_calculator.add_tax_from_f64(18.0, Stage::OverTaxable, Type::Percentual);
     assert!(err.is_some(), "error triggered adding first f64 tax");
 
-    let err = tax_calculator.add_f64_tax(10.0, Stage::OverTaxable, Type::Percentual);
+    let err = tax_calculator.add_tax_from_f64(10.0, Stage::OverTaxable, Type::Percentual);
     assert!(err.is_some(), "error triggered adding second f64 tax");
 
-    let err = tax_calculator.add_f64_tax(0.5, Stage::OverTaxable, Type::AmountUnit);
+    let err = tax_calculator.add_tax_from_f64(0.5, Stage::OverTaxable, Type::AmountUnit);
     assert!(err.is_some(), "error triggered adding third f64 tax");
 
     let r = tax_calculator.compute_from_f64(24.576855, 4.0);

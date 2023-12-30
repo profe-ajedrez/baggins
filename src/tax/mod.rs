@@ -7,6 +7,24 @@ pub enum Type {
     AmountUnit,
 }
 
+impl Type {
+    pub fn from_i8(r#type: i8) -> Option<Self> {
+        if r#type == 0 {
+            return Some(Self::Percentual);
+        }
+
+        if r#type == 1 {
+            return Some(Self::AmountLine);
+        }
+
+        if r#type == 2 {
+            return Some(Self::AmountUnit);
+        }
+
+        None
+    }
+}
+
 #[derive(Debug)] // Allow the use of "{:?}" format specifier
 pub enum TaxError {
     NegativeTaxable(f64),
@@ -55,10 +73,29 @@ pub mod tax_stage {
 
     use super::TaxError;
 
+    #[derive(Debug, PartialEq)]
     pub enum Stage {
         OverTaxable,
         OverTax,
         OverTaxIgnorable,
+    }
+
+    impl Stage {
+        pub fn from_i8(stage: i8) -> Option<Self> {
+            if stage == 0 {
+                return Some(Stage::OverTaxable);
+            }
+
+            if stage == 1 {
+                return Some(Stage::OverTax);
+            }
+
+            if stage == 2 {
+                return Some(Stage::OverTaxIgnorable);
+            }
+
+            None
+        }
     }
 
     pub trait Stager {
@@ -364,7 +401,7 @@ use crate::{hundred, tax::tax_stage::Stager};
 
 /// A handler to the taxes calculation stage is represented here
 pub trait TaxComputer {
-    fn add_f64_tax(
+    fn add_tax_from_f64(
         &mut self,
         tax: f64,
         stage: tax_stage::Stage,
@@ -376,7 +413,7 @@ pub trait TaxComputer {
         stage: tax_stage::Stage,
         tax_type: Type,
     ) -> Option<TaxError>;
-    fn add_str_tax<S: Into<String>>(
+    fn add_tax_from_str<S: Into<String>>(
         &mut self,
         tax: S,
         stage: tax_stage::Stage,
@@ -473,7 +510,7 @@ impl Default for ComputedTax {
 }
 
 impl TaxComputer for ComputedTax {
-    fn add_f64_tax(
+    fn add_tax_from_f64(
         &mut self,
         tax: f64,
         stage: tax_stage::Stage,
@@ -526,7 +563,7 @@ impl TaxComputer for ComputedTax {
         Some(TaxError::InvalidTaxStage)
     }
 
-    fn add_str_tax<S: Into<String>>(
+    fn add_tax_from_str<S: Into<String>>(
         &mut self,
         tax: S,
         stage: tax_stage::Stage,
@@ -549,48 +586,30 @@ impl TaxComputer for ComputedTax {
         match stage {
             tax_stage::Stage::OverTaxable => match tax_type {
                 Type::Percentual => {
-                    self.over_taxable.add_percentual(tax);
+                    self.over_taxable.add_percentual(tax)
                 }
 
-                Type::AmountLine => {
-                    self.over_taxable.add_amount_by_line(tax);
-                }
+                Type::AmountLine => self.over_taxable.add_amount_by_line(tax),
 
-                Type::AmountUnit => {
-                    self.over_taxable.add_amount_by_qty(tax);
-                }
+                Type::AmountUnit => self.over_taxable.add_amount_by_qty(tax),
             },
 
             tax_stage::Stage::OverTax => match tax_type {
-                Type::Percentual => {
-                    self.over_tax.add_percentual(tax);
-                }
+                Type::Percentual => self.over_tax.add_percentual(tax),
 
-                Type::AmountLine => {
-                    self.over_tax.add_amount_by_line(tax);
-                }
+                Type::AmountLine => self.over_tax.add_amount_by_line(tax),
 
-                Type::AmountUnit => {
-                    self.over_tax.add_amount_by_qty(tax);
-                }
+                Type::AmountUnit => self.over_tax.add_amount_by_qty(tax),
             },
 
             tax_stage::Stage::OverTaxIgnorable => match tax_type {
-                Type::Percentual => {
-                    self.over_tax_ignorable.add_percentual(tax);
-                }
+                Type::Percentual => self.over_tax_ignorable.add_percentual(tax),
 
-                Type::AmountLine => {
-                    self.over_tax_ignorable.add_amount_by_line(tax);
-                }
+                Type::AmountLine => self.over_tax_ignorable.add_amount_by_line(tax),
 
-                Type::AmountUnit => {
-                    self.over_tax_ignorable.add_amount_by_qty(tax);
-                }
+                Type::AmountUnit => self.over_tax_ignorable.add_amount_by_qty(tax),
             },
         }
-
-        Some(TaxError::InvalidTaxStage)
     }
 
     fn compute(&self, unit_value: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError> {

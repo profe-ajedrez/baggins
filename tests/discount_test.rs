@@ -19,7 +19,7 @@ fn discount_testable() {
         None => {}
     }
 
-    let err = d.add_str_discount("10.56", Type::AmountUnit);
+    let err = d.add_discount_from_str("10.56", Type::AmountUnit);
     match err {
         Some(e) => {
             panic!("{e}")
