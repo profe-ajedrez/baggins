@@ -1,9 +1,35 @@
 use bigdecimal::{BigDecimal, ToPrimitive};
 use std::{fmt, str::FromStr};
 
+/// The tax type
+/// A tax type could be percentual or a fixed amount, and the fixed amount tax
+/// could be by each unit or by everything being sold
+///
+/// # Example
+///
+/// ```
+/// use calculus::tax;
+///
+/// let tax_type = tax::Type::Percentual;
+/// ```
 pub enum Type {
+    /// Percentual represents a tax calculated as percent value over a taxable
     Percentual,
+
+    /// Tax calculated as a fixed amount over a taxable only
+    /// one time without consider quantity.
+    ///
+    /// If you sell apples and there is a tax which is charged regardless of
+    /// the number of apples sold, plus a $3 tax that applies to both 1 and
+    /// 10 apples sold, then that is a line item tax
     AmountLine,
+
+    /// Tax calculated as a fixed value over the unit value of the product
+    /// being sold.
+    /// Applies for each unit being sold
+    ///
+    /// If you sell apples and there is a tax which is chaged for every apple that
+    /// is an amount unit tax
     AmountUnit,
 }
 
@@ -25,7 +51,8 @@ impl Type {
     }
 }
 
-#[derive(Debug)] // Allow the use of "{:?}" format specifier
+#[derive(Debug)]
+/// Represents possible errors in the computing of taxes
 pub enum TaxError {
     NegativeTaxable(f64),
     NegativeTax(String),
@@ -38,7 +65,6 @@ pub enum TaxError {
     Other,
 }
 
-// Allow the use of "{}" format specifier
 impl fmt::Display for TaxError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -66,6 +92,17 @@ impl fmt::Display for TaxError {
     }
 }
 
+/// Represents the time at which a tax should be calculated.
+/// There are 3 stages in which a tax could be calculated
+///
+/// 1 directly on the values of the products being sold, we call these taxes
+/// over taxables
+///
+/// 2 on the value obtained from applying overtaxable taxes, we call these
+/// overtaxes and they are the typical case of tax on tax
+///
+/// 3 are calculated the same as overtaxable taxes, but they are not considered
+/// for the calculation of overtax taxes, we call these ignorable overtaxes
 pub mod tax_stage {
     use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 
@@ -75,12 +112,34 @@ pub mod tax_stage {
 
     #[derive(Debug, PartialEq)]
     pub enum Stage {
+        /// Taxes that are calculated directly on the value of the products
         OverTaxable,
+
+        /// Taxes that are calculated on the values of the products plus the
+        /// over taxable tax calculated for them
         OverTax,
+
+        /// taxes calculated the same as overtaxables, but are not considered
+        /// for the calculation of overtaxes.
         OverTaxIgnorable,
     }
 
     impl Stage {
+        /// returns an Option<Stage> over an i8 argument where a value of
+        ///
+        /// 0 returns an Some(Stage::OverTaxable)
+        ///
+        /// 1 returns an Some(Stage::OverTax)
+        ///
+        /// 2 returns an some(Stage::OverTaxIgnorable)
+        ///
+        /// Other values returns None
+        ///
+        /// ```
+        /// use calculus::tax;
+        ///
+        /// let stage = tax::tax_stage::Stage::from_i8(0);
+        /// ```        
         pub fn from_i8(stage: i8) -> Option<Self> {
             if stage == 0 {
                 return Some(Stage::OverTaxable);
@@ -99,23 +158,48 @@ pub mod tax_stage {
     }
 
     pub trait Stager {
+        /// adds a BigDecimal value as a percentual tax to the stage
         fn add_percentual(&mut self, percent: BigDecimal) -> Option<TaxError>;
+
+        /// adds a BigDecimal value as an amount unit tax to the stage
         fn add_amount_by_qty(&mut self, amount: BigDecimal) -> Option<TaxError>;
+
+        /// adds a BigDecimal value as an amount line tax to the stage
         fn add_amount_by_line(&mut self, amount: BigDecimal) -> Option<TaxError>;
+
+        /// calculates the stage taxes from BigDecimal taxable and quantity
         fn tax(&self, taxable: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError>;
 
+        /// adds a f64 value as a percentual tax to the stage. This could cause precision loss
         fn add_percentual_from_f64(&mut self, percent: f64) -> Option<TaxError>;
+
+        /// adds a f64 value as an amount unit tax to the stage. This could cause precision loss
         fn add_amount_by_qty_from_f64(&mut self, amount: f64) -> Option<TaxError>;
+
+        /// adds a f64 value as an amount line tax to the stage. This could cause precision loss
         fn add_amount_by_line_from_f64(&mut self, amount: f64) -> Option<TaxError>;
+
+        /// calculates the stage taxes from f64 taxable and quantity
         fn tax_from_f64(&self, taxable: f64, qty: f64) -> Result<BigDecimal, TaxError>;
+
+        /// returns the cumulative percentual value of the percentual taxes of the stage
         fn percent(&self) -> BigDecimal;
+
+        /// returns the cumulative value of the amount line taxes of the stage
         fn amount_line(&self) -> BigDecimal;
+
+        /// returns the cumulative value of the amount unit taxes of the stage
         fn amount_by_qty(&self) -> BigDecimal;
 
+        /// removes stage taxes from the taxed BigDecimal value
         fn un_tax(&self, tax: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError>;
+
+        /// removes stage taxes from the taxed f64 value
         fn un_tax_from_f64(&self, tax: f64, qty: f64) -> Result<BigDecimal, TaxError>;
     }
 
+    /// Able to store tax data belonging to a given stage and make calculations
+    /// on it
     pub struct TaxStage {
         percentuals: BigDecimal,
         amount_line: BigDecimal,
@@ -123,6 +207,15 @@ pub mod tax_stage {
     }
 
     impl TaxStage {
+        /// returns a TaxStage ready to use
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use calculus::tax;
+        ///
+        /// let tax_st = tax::tax_stage::TaxStage::new();
+        /// ```
         pub fn new() -> Self {
             Self {
                 percentuals: BigDecimal::zero(),
@@ -441,7 +534,7 @@ pub trait TaxComputer {
     }
 }
 
-/// Is a handler to the taxes calculation stage
+/// Is a handler to the taxes calculation stages. 
 ///
 /// # Example
 ///
@@ -454,13 +547,13 @@ pub trait TaxComputer {
 ///
 ///     let mut tax_calculator = calculus::tax::ComputedTax::new();
 ///
-///     let err = tax_calculator.add_f64_tax(18.0, Stage::OverTaxable, Type::Percentual);
-///     assert!(err.is_some(), "error triggered adding first f64 tax");
+///     let err = tax_calculator.add_tax_from_f64(18.0, Stage::OverTaxable, Type::Percentual);
+///     assert!(err.is_some(), "error triggered adding first f64 tax {:?}", err);
 ///
-///     let err = tax_calculator.add_f64_tax(10.0, Stage::OverTaxable, Type::Percentual);
+///     let err = tax_calculator.add_tax_from_f64(10.0, Stage::OverTaxable, Type::Percentual);
 ///     assert!(err.is_some(), "error triggered adding second f64 tax");
 ///
-///     let err = tax_calculator.add_f64_tax(0.5, Stage::OverTaxable, Type::AmountUnit);
+///     let err = tax_calculator.add_tax_from_f64(0.5, Stage::OverTaxable, Type::AmountUnit);
 ///     assert!(err.is_some(), "error triggered adding third f64 tax");
 ///
 ///     let r = tax_calculator.compute_from_f64(24.576855, 4.0);
@@ -585,9 +678,7 @@ impl TaxComputer for ComputedTax {
     ) -> Option<TaxError> {
         match stage {
             tax_stage::Stage::OverTaxable => match tax_type {
-                Type::Percentual => {
-                    self.over_taxable.add_percentual(tax)
-                }
+                Type::Percentual => self.over_taxable.add_percentual(tax),
 
                 Type::AmountLine => self.over_taxable.add_amount_by_line(tax),
 

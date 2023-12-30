@@ -5,13 +5,13 @@
 //! `calculus` provides a series of utilities to easily and efficiently calculate totals
 //! and subtotals for sales.
 //! Due to the nature of monetary calculations, the Bigdecimal crate is used as a backend.
-//! 
+//!
 //! The focus is on ease of use and learning Rust, so there are many opportunities for improvement.
-//! 
-//! `calculus` provee una serie de utilidades para calcular facil y eficientemente totales 
+//!
+//! `calculus` provee una serie de utilidades para calcular facil y eficientemente totales
 //! y subtotales de lineas de detalle de procesos de venta.
 //! El foco está en la facilidad de uso y en aprender Rust, por lo que hay muchas oportunidades de mejora.
-//! 
+//!
 //!
 use std::{fmt, str::FromStr};
 
@@ -25,24 +25,24 @@ pub mod tax;
 
 #[derive(Debug)]
 /// The error type for [calculus] operations - El tipo de error para operaciones de [calculus]
-/// 
+///
 /// Everything in life can end in a huge mistake, and the operations that [calculus] performs
 /// They are not the exception. We have tried to prepare the most common errors.
-/// 
+///
 /// Todo en la vida puede terminar en un enorme error, y las operaciones que [calculus] realiza
 /// no son la excepción. Hemos tratado de preparar los errores mas comunes.
-/// 
+///
 /// # Example
-/// 
+///
 /// ```
 ///  use calculus::discount::Type;
 ///  use calculus::DetailCalculator;
 ///  use crate::calculus::Calculator;
-/// 
+///
 ///  let mut c = DetailCalculator::new();
-/// 
+///
 ///  c.add_discount_from_str("22.74", Type::Percentual);
-/// 
+///
 ///  let r = c.compute_from_str("120.34", "-10", 2);
 ///  
 ///  match r {
@@ -52,9 +52,9 @@ pub mod tax;
 ///      Err(err) => {
 ///          println!("this will print a CalculusError::NegativeQty {}", err);
 ///      }
-///  } 
+///  }
 /// ```
-/// 
+///
 pub enum CalculusError {
     /// Error due to pass a negative unit value to the computer
     NegativeUnitValue(String),
@@ -64,7 +64,7 @@ pub enum CalculusError {
 
     /// Error due to pass a negative quantity
     NegativeQty(String),
-    
+
     /// Error for not being able to convert a value to [BigDecimal]
     InvalidDecimalValue(String),
 
@@ -109,7 +109,7 @@ pub fn inverse() -> BigDecimal {
 #[derive(Debug, Serialize)]
 /// will contain the result of the computer of the specified subtotal
 pub struct Calculation {
-    /// stores the unit value multiplied by the quantity minus the discount 
+    /// stores the unit value multiplied by the quantity minus the discount
     pub net: BigDecimal,
     /// stores the net plus taxes
     pub brute: BigDecimal,
@@ -131,9 +131,9 @@ pub struct Calculation {
 
 impl Calculation {
     /// Returns a new CalculationFromUnitValue with their fields set to zero
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// use calculus::Calculation;
     ///  let clt = Calculation::new();
@@ -155,16 +155,16 @@ impl Calculation {
 
     /// Returns a [CalculationF64] from the original [Calculation]
     /// This may cause precission loss
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// use calculus::Calculation;
     ///
     /// let clt = Calculation::new();
     /// let clt_f64 = clt.to_f64_calculation();
     /// ```
-    /// 
+    ///
     pub fn to_f64_calculation(&self) -> Option<CalculationF64> {
         Some(CalculationF64 {
             net: self.net.to_f64()?,
@@ -180,16 +180,16 @@ impl Calculation {
     }
 
     /// Returns a [CalculationString] from the original [Calculation]
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// use calculus::Calculation;
     ///
     /// let clt = Calculation::new();
     /// let clt_string = clt.to_string_calculation();
     /// ```
-    /// 
+    ///
     pub fn to_string_calculation(&self) -> CalculationString {
         CalculationString {
             net: self.net.to_string(),
@@ -205,25 +205,25 @@ impl Calculation {
     }
 
     /// rounds the value of the Calculation fields to the specified scale
-    /// 
+    ///
     /// # Example
-    /// 
+    ///
     /// ```
     /// use calculus::discount::Type;
     /// use calculus::DetailCalculator;
     /// use crate::calculus::Calculator;
-    /// 
+    ///
     /// let mut c = DetailCalculator::new();
-    /// 
+    ///
     /// let result = c.compute_from_str("10.1", "2", 32); // returns a calculation with a max of 32 decimals
-    /// 
+    ///
     /// match result {
     ///     Ok(rounded_32_calculation) => {
     ///         let rounded_2_calculation = rounded_32_calculation.round(2); // returns a calculation rounded to 2 decimals
     ///     },
     ///     Err(err) => { panic!("{}", err)},
     /// }
-    /// 
+    ///
     /// ```
     pub fn round(&self, scale: i8) -> Self {
         let scale = i64::from(scale);
@@ -297,31 +297,50 @@ impl fmt::Display for CalculationF64 {
 
 // A thing able to calculate sales subtotals
 pub trait Calculator {
-
     /// adds a discount to [Calculator].
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// discount [BigDecimal] the value to discount
-    /// discount_type [discount::Type] the type of the discount. 
+    /// discount_type [discount::Type] the type of the discount.
     fn add_discount(
         &mut self,
         discount: BigDecimal,
         discount_type: discount::Type,
     ) -> Option<discount::DiscountError>;
 
+    /// adds a discount to [Calculator] from a [f64] value so expect some precision loss
+    /// 
+    /// # Params
+    ///
+    /// discount [f64] the value to discount
+    /// discount_type [discount::Type] the type of the discount.
     fn add_discount_from_f64(
         &mut self,
         discount: f64,
         discount_type: discount::Type,
     ) -> Option<discount::DiscountError>;
 
+
+    /// adds a discount to [Calculator] from a [Into<String>] value 
+    /// 
+    /// # Params
+    ///
+    /// discount [Into<String>] the value to discount
+    /// discount_type [discount::Type] the type of the discount.
     fn add_discount_from_str<S: Into<String>>(
         &mut self,
         discount: S,
         discount_type: discount::Type,
     ) -> Option<discount::DiscountError>;
 
+    /// adds a tax to [Calculator] from a [f64] value so expect some precision loss
+    /// 
+    /// # Params
+    ///
+    /// tax [f64] the value to tax
+    /// stage [tax::tax_stage::Stage]  the stage where to add the tax
+    /// tax_type [tax::Type] the type of the tax.
     fn add_tax_from_f64(
         &mut self,
         tax: f64,
@@ -329,6 +348,13 @@ pub trait Calculator {
         tax_type: tax::Type,
     ) -> Option<tax::TaxError>;
 
+    /// adds a tax to [Calculator] from a [BigDecimal]
+    /// 
+    /// # Params
+    ///
+    /// tax [BigDecimal] the value to tax
+    /// stage [tax::tax_stage::Stage]  the stage where to add the tax
+    /// tax_type [tax::Type] the type of the tax.
     fn add_tax(
         &mut self,
         tax: BigDecimal,
@@ -336,6 +362,14 @@ pub trait Calculator {
         tax_type: tax::Type,
     ) -> Option<tax::TaxError>;
 
+
+    /// adds a tax to [Calculator] from a [String]
+    /// 
+    /// # Params
+    ///
+    /// tax [String] the value to tax
+    /// stage [tax::tax_stage::Stage]  the stage where to add the tax
+    /// tax_type [tax::Type] the type of the tax.
     fn add_tax_from_str<S: Into<String>>(
         &mut self,
         tax: S,
@@ -343,6 +377,14 @@ pub trait Calculator {
         tax_type: tax::Type,
     ) -> Option<tax::TaxError>;
 
+    /// calculates and produces a [Calculation] from a [BigDecimal] brute value
+    /// and a quantity of the same type
+    /// 
+    /// # Params
+    /// 
+    /// brute [BigDecimal]  the total from which compute the rest of the values
+    /// qty [BigDecimal]  quantity of items sold
+    /// scale [i8] decimal scale to round values
     fn compute_from_brute(
         &self,
         brute: BigDecimal,
@@ -350,6 +392,14 @@ pub trait Calculator {
         scale: i8,
     ) -> Result<Calculation, CalculusError>;
 
+    /// calculates and produces a [Calculation] from a [f64] brute value
+    /// and a quantity of the same type
+    /// 
+    /// # Params
+    /// 
+    /// brute [f64]  the total from which compute the rest of the values
+    /// qty [f64]  quantity of items sold
+    /// scale [i8] decimal scale to round values
     fn compute_from_brute_f64(
         &self,
         brute: f64,
@@ -357,6 +407,14 @@ pub trait Calculator {
         scale: i8,
     ) -> Result<Calculation, CalculusError>;
 
+    /// calculates and produces a [Calculation] from a [String] brute value
+    /// and a quantity of the same type
+    /// 
+    /// # Params
+    /// 
+    /// brute [String]  the total from which compute the rest of the values
+    /// qty [String]  quantity of items sold
+    /// scale [i8] decimal scale to round values
     fn compute_from_brute_str<S: Into<String>>(
         &self,
         brute: S,
@@ -364,6 +422,14 @@ pub trait Calculator {
         scale: i8,
     ) -> Result<Calculation, CalculusError>;
 
+    /// calculates and produces a [Calculation] from a [String] unit value
+    /// and a quantity of the same type
+    /// 
+    /// # Params
+    /// 
+    /// unit value [String]  the unit value from which compute the rest of the values
+    /// qty [String]  quantity of items sold
+    /// scale [i8] decimal scale to round values
     fn compute_from_str<S: Into<String>>(
         &self,
         unit_value: S,
@@ -371,6 +437,14 @@ pub trait Calculator {
         scale: i8,
     ) -> Result<Calculation, CalculusError>;
 
+    /// calculates and produces a [Calculation] from a [f64] unit value
+    /// and a quantity of the same type
+    /// 
+    /// # Params
+    /// 
+    /// unit value [f64]  the unit value from which compute the rest of the values
+    /// qty [f64]  quantity of items sold
+    /// scale [i8] decimal scale to round values
     fn compute_from_f64(
         &self,
         unit_value: f64,
@@ -378,6 +452,14 @@ pub trait Calculator {
         scale: i8,
     ) -> Result<Calculation, CalculusError>;
 
+    /// calculates and produces a [Calculation] from a [BigDecimal] unit value
+    /// and a quantity of the same type
+    /// 
+    /// # Params
+    /// 
+    /// unit value [BigDecimal]  the unit value from which compute the rest of the values
+    /// qty [BigDecimal]  quantity of items sold
+    /// scale [i8] decimal scale to round values
     fn compute(
         &self,
         unit_value: BigDecimal,
@@ -386,7 +468,9 @@ pub trait Calculator {
     ) -> Result<Calculation, CalculusError>;
 }
 
-/// Able to calculate detail lines
+/// Able to calculate detail lines.
+/// 
+/// Delegates the heavy lifting to [tax::ComputedTax] and [discount::ComputedDiscount]
 ///
 /// # Example
 ///
@@ -400,13 +484,13 @@ pub trait Calculator {
 /// let mut c = calculus::DetailCalculator::new();
 ///
 /// let err = c.add_discount_from_str("10.0", discount::Type::Percentual);
-/// 
+///
 /// assert!(err.is_none(), "{}", format!("{}", err.unwrap()));
-/// 
+///
 /// let err = c.add_tax_from_str("16.0", OverTaxable, tax::Type::Percentual);
-/// 
+///
 /// assert!(err.is_none(), "{}", format!("{}", err.unwrap()));
-/// 
+///
 /// let r = c.compute(
 ///     BigDecimal::from_str("100.0").unwrap(),
 ///     BigDecimal::from_str("2.0").unwrap(),
