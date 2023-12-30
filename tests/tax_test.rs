@@ -1,12 +1,12 @@
 use bigdecimal::BigDecimal;
-use calculus::tax::tax_stage::Stage;
-use calculus::tax::TaxComputer;
-use calculus::tax::Type;
+use baggins::tax::tax_stage::Stage;
+use baggins::tax::TaxComputer;
+use baggins::tax::Type;
 use std::str::FromStr;
 
 #[test]
 fn test_tax_computer_errors() {
-    let mut tax_calculator = calculus::tax::ComputedTax::new();
+    let mut tax_calculator = baggins::tax::ComputedTax::new();
     let err = tax_calculator.add_tax_from_f64(-18.0, Stage::OverTaxable, Type::Percentual);
 
     match err {
@@ -19,7 +19,7 @@ fn test_tax_computer_errors() {
 
 #[test]
 fn test_tax_computer_adding_tax_f64() {
-    let mut tax_calculator = calculus::tax::ComputedTax::new();
+    let mut tax_calculator = baggins::tax::ComputedTax::new();
 
     let err = tax_calculator.add_tax_from_f64(18.0, Stage::OverTaxable, Type::Percentual);
     assert!(err.is_some(), "error triggered adding first f64 tax");
@@ -33,7 +33,7 @@ fn test_tax_computer_adding_tax_f64() {
 
 #[test]
 fn test_tax_computer_calculate_over_taxable_f64() {
-    let mut tax_calculator = calculus::tax::ComputedTax::new();
+    let mut tax_calculator = baggins::tax::ComputedTax::new();
 
     let err = tax_calculator.add_tax_from_f64(18.0, Stage::OverTaxable, Type::Percentual);
     assert!(err.is_some(), "error triggered adding first f64 tax");

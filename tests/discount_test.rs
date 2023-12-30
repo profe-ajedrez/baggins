@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
-use calculus::discount::{ComputedDiscount, DiscountComputer, Type};
+use baggins::discount::{ComputedDiscount, DiscountComputer, Type};
 
 #[test]
 fn test_discount_computer() {

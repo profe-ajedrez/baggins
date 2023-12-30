@@ -59,7 +59,6 @@ pub enum DiscountError {
     Other,
 }
 
-// Allow the use of "{}" format specifier
 impl fmt::Display for DiscountError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -91,7 +90,11 @@ impl fmt::Display for DiscountError {
 
 /// Represents a thing able to calculates discounts
 pub trait DiscountComputer {
-    fn add_discount_from_f64(&mut self, discount: f64, discount_type: Type) -> Option<DiscountError>;
+    fn add_discount_from_f64(
+        &mut self,
+        discount: f64,
+        discount_type: Type,
+    ) -> Option<DiscountError>;
     fn add_discount_from_str<S: Into<String>>(
         &mut self,
         discount: S,
@@ -130,7 +133,7 @@ pub trait DiscountComputer {
 /// ```
 /// use std::str::FromStr;
 /// use bigdecimal::BigDecimal;
-/// use calculus::discount::{ComputedDiscount, DiscountComputer, Type};
+/// use baggins::discount::{ComputedDiscount, DiscountComputer, Type};
 ///
 /// fn main() {
 ///     let mut d = ComputedDiscount::new();
@@ -143,7 +146,7 @@ pub trait DiscountComputer {
 ///         None => {},
 ///     }
 ///
-///     let err = d.add_str_discount("10.56", Type::AmountUnit);
+///     let err = d.add_discount_from_str("10.56", Type::AmountUnit);
 ///     match err {
 ///         Some(e) => {
 ///             panic!("{e}")
@@ -214,7 +217,11 @@ impl DiscountComputer for ComputedDiscount {
         }
     }
 
-    fn add_discount_from_f64(&mut self, discount: f64, discount_type: Type) -> Option<DiscountError> {
+    fn add_discount_from_f64(
+        &mut self,
+        discount: f64,
+        discount_type: Type,
+    ) -> Option<DiscountError> {
         let opt_d = BigDecimal::from_f64(discount);
 
         match opt_d {

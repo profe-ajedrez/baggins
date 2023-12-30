@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use bigdecimal::BigDecimal;
-use calculus::{
+use baggins::{
     discount::{ComputedDiscount, DiscountComputer, Type},
     tax, Calculator,
 };
@@ -28,7 +28,7 @@ fn bench_compute(c: &mut Criterion) {
     let vu = BigDecimal::from_str("100.0").unwrap();
     let qty = BigDecimal::from_str("1.0").unwrap();
 
-    let mut cl = calculus::DetailCalculator::new();
+    let mut cl = baggins::DetailCalculator::new();
     let _ = cl.add_discount(BigDecimal::from_str("10.2").unwrap(), Type::Percentual);
     let _ = cl.add_discount_from_str("10.56", Type::AmountUnit);
     let _ = cl.add_discount(BigDecimal::from_str("1.5").unwrap(), Type::AmountLine);
@@ -38,8 +38,8 @@ fn bench_compute(c: &mut Criterion) {
             "16.0",
             tax::tax_stage::Stage::OverTaxable,
             tax::Type::Percentual,
-        )
-        .unwrap();
+        );
+        
 
     let _ = cl.add_tax_from_str(
         "1.0",

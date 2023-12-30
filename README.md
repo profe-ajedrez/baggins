@@ -1,2 +1,3 @@
-# calculus
-Utilidades para realizar operaciones de calculos sobre subtotales y totales de venta
+# baggins
+
+Utilities to perform calculation operations on subtotals and sales totals
