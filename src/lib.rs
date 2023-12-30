@@ -41,7 +41,7 @@ pub mod tax;
 /// 
 ///  let mut c = DetailCalculator::new();
 /// 
-///  c.add_discount_from_str("22.74", calculus::discount::Type::Percentual);
+///  c.add_discount_from_str("22.74", Type::Percentual);
 /// 
 ///  let r = c.compute_from_str("120.34", "-10", 2);
 ///  
@@ -113,15 +113,15 @@ pub struct Calculation {
     pub net: BigDecimal,
     /// stores the net plus taxes
     pub brute: BigDecimal,
-    /// stores the cummulated tax calculated over net
+    /// stores the cumulated tax calculated over net
     pub tax: BigDecimal,
-    /// stores the cummulated discount
+    /// stores the cumulated discount
     pub discount: BigDecimal,
-    /// net without dicount. Stores the net plus the discounted value
+    /// net without discount. Stores the net plus the discounted value
     pub net_wout_disc: BigDecimal,
     /// brute without discount. Stores the brute plus the discounted value
     pub brute_wout_disc: BigDecimal,
-    /// tax without discount. Stores the cummulated taxes plus the discounted value 
+    /// tax without discount. Stores the cumulated taxes plus the discounted value
     pub tax_wout_disc: BigDecimal,
     /// stores the unit value
     pub unit_value: BigDecimal,
@@ -135,7 +135,8 @@ impl Calculation {
     /// # Example
     /// 
     /// ```
-    ///  let clt = Calulation::new()
+    /// use calculus::Calculation;
+    ///  let clt = Calculation::new();
     /// ```
     ///  
     pub fn new() -> Self {
@@ -158,8 +159,10 @@ impl Calculation {
     /// # Example
     /// 
     /// ```
-    ///  let clt = Calulation::new()
-    ///  let clt_f64 = clt.to_f64_calculation()
+    /// use calculus::Calculation;
+    ///
+    /// let clt = Calculation::new();
+    /// let clt_f64 = clt.to_f64_calculation();
     /// ```
     /// 
     pub fn to_f64_calculation(&self) -> Option<CalculationF64> {
@@ -181,8 +184,10 @@ impl Calculation {
     /// # Example
     /// 
     /// ```
-    ///  let clt = Calulation::new()
-    ///  let clt_string = clt.to_string_calculation()
+    /// use calculus::Calculation;
+    ///
+    /// let clt = Calculation::new();
+    /// let clt_string = clt.to_string_calculation();
     /// ```
     /// 
     pub fn to_string_calculation(&self) -> CalculationString {
