@@ -130,7 +130,7 @@ pub struct Calculation {
 }
 
 impl Calculation {
-    /// Returns a new CalculationFromUnitValue with their fields set to zero
+    /// Returns a new Calculation with their fields set to zero
     ///
     /// # Example
     ///

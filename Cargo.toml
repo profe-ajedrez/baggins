@@ -1,9 +1,9 @@
 [package]
 name = "baggins"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 authors = ["Andrés Reyes El Programador Pobre"]
-description = "Utilities to perform calculation operations on subtotals and sales totals"
+description = "Utilities to Perform Sales Totals and Subtotals Calculation Operations"
 license = "MIT"
 keywords = ["sales"]
 categories = ["finance"]
