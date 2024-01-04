@@ -2,8 +2,7 @@
 //
 //! baggins
 //!
-//! `baggins` provides a series of utilities to easily and efficiently calculate totals
-//! and subtotals for sales.
+//! `baggins` provides a series of utilities to easily and efficiently calculate sales operations.
 //! Due to the nature of monetary calculations, the Bigdecimal crate is used as a backend.
 //!
 //! The focus is on ease of use and learning Rust, so there are many opportunities for improvement.
@@ -104,6 +103,11 @@ pub fn one() -> BigDecimal {
 /// handy utility to get -1.0 as BigDecimal
 pub fn inverse() -> BigDecimal {
     BigDecimal::from_str("-1.0").unwrap()
+}
+
+/// handy utility to get 0.0 as BigDecimal. Just a wrapper for BigDecimal::zero()
+pub fn zero() -> BigDecimal {
+    BigDecimal::zero()
 }
 
 #[derive(Debug, Serialize)]
@@ -258,7 +262,7 @@ impl fmt::Display for Calculation {
 }
 
 #[derive(Debug, Serialize)]
-// stores the values as f64. Some precision may be loss
+// stores the values as f64. Some precission may be loss
 pub struct CalculationF64 {
     pub net: f64,
     pub brute: f64,
@@ -269,6 +273,16 @@ pub struct CalculationF64 {
     pub tax_wout_disc: f64,
     pub unit_value: f64,
     pub total_discount_percent: f64,
+}
+
+impl fmt::Display for CalculationF64 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {} )",
+            self.net,
+            self.brute,
+            self.tax, self.discount, self.net_wout_disc, self.brute_wout_disc, self.tax_wout_disc, self.unit_value, self.total_discount_percent
+        )
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -285,15 +299,7 @@ pub struct CalculationString {
     pub total_discount_percent: String,
 }
 
-impl fmt::Display for CalculationF64 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {} )",
-            self.net,
-            self.brute,
-            self.tax, self.discount, self.net_wout_disc, self.brute_wout_disc, self.tax_wout_disc, self.unit_value, self.total_discount_percent
-        )
-    }
-}
+
 
 // A thing able to calculate sales subtotals
 pub trait Calculator {
@@ -310,24 +316,27 @@ pub trait Calculator {
     ) -> Option<discount::DiscountError>;
 
     /// adds a discount to [Calculator] from a [f64] value so expect some precision loss
-    /// 
+    ///
     /// # Params
     ///
     /// discount [f64] the value to discount
+    /// 
     /// discount_type [discount::Type] the type of the discount.
+    /// 
     fn add_discount_from_f64(
         &mut self,
         discount: f64,
         discount_type: discount::Type,
     ) -> Option<discount::DiscountError>;
 
-
-    /// adds a discount to [`Calculator`] from a [`Into<String>`] value 
-    /// 
+    /// adds a discount to [`Calculator`] from a [`Into<String>`] value
+    ///
     /// # Params
     ///
     /// discount [`Into<String>`] the value to discount
+    /// 
     /// discount_type [`discount::Type`] the type of the discount.
+    /// 
     fn add_discount_from_str<S: Into<String>>(
         &mut self,
         discount: S,
@@ -335,12 +344,15 @@ pub trait Calculator {
     ) -> Option<discount::DiscountError>;
 
     /// adds a tax to [Calculator] from a [f64] value so expect some precision loss
-    /// 
+    ///
     /// # Params
     ///
     /// tax [f64] the value to tax
+    /// 
     /// stage [tax::tax_stage::Stage]  the stage where to add the tax
+    /// 
     /// tax_type [tax::Type] the type of the tax.
+    /// 
     fn add_tax_from_f64(
         &mut self,
         tax: f64,
@@ -349,12 +361,15 @@ pub trait Calculator {
     ) -> Option<tax::TaxError>;
 
     /// adds a tax to [Calculator] from a [BigDecimal]
-    /// 
+    ///
     /// # Params
     ///
     /// tax [BigDecimal] the value to tax
+    /// 
     /// stage [tax::tax_stage::Stage]  the stage where to add the tax
+    /// 
     /// tax_type [tax::Type] the type of the tax.
+    /// 
     fn add_tax(
         &mut self,
         tax: BigDecimal,
@@ -362,14 +377,16 @@ pub trait Calculator {
         tax_type: tax::Type,
     ) -> Option<tax::TaxError>;
 
-
     /// adds a tax to [Calculator] from a [String]
-    /// 
+    ///
     /// # Params
     ///
     /// tax [String] the value to tax
+    /// 
     /// stage [tax::tax_stage::Stage]  the stage where to add the tax
+    /// 
     /// tax_type [tax::Type] the type of the tax.
+    /// 
     fn add_tax_from_str<S: Into<String>>(
         &mut self,
         tax: S,
@@ -379,14 +396,17 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [BigDecimal] brute value
     /// and a quantity of the same type
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// brute [BigDecimal]  the total from which compute the rest of the values
+    /// 
     /// qty [BigDecimal]  quantity of items sold
+    /// 
     /// scale [i8] decimal scale to round values
+    /// 
     fn compute_from_brute(
-        &self,
+        &mut self,
         brute: BigDecimal,
         qty: BigDecimal,
         scale: i8,
@@ -394,14 +414,17 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [f64] brute value
     /// and a quantity of the same type
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// brute [f64]  the total from which compute the rest of the values
+    /// 
     /// qty [f64]  quantity of items sold
+    /// 
     /// scale [i8] decimal scale to round values
+    /// 
     fn compute_from_brute_f64(
-        &self,
+        &mut self,
         brute: f64,
         qty: f64,
         scale: i8,
@@ -409,14 +432,17 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [String] brute value
     /// and a quantity of the same type
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// brute [String]  the total from which compute the rest of the values
+    /// 
     /// qty [String]  quantity of items sold
+    /// 
     /// scale [i8] decimal scale to round values
+    /// 
     fn compute_from_brute_str<S: Into<String>>(
-        &self,
+        &mut self,
         brute: S,
         qty: S,
         scale: i8,
@@ -424,14 +450,17 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [String] unit value
     /// and a quantity of the same type
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// unit value [String]  the unit value from which compute the rest of the values
+    /// 
     /// qty [String]  quantity of items sold
+    /// 
     /// scale [i8] decimal scale to round values
+    /// 
     fn compute_from_str<S: Into<String>>(
-        &self,
+        &mut self,
         unit_value: S,
         qty: S,
         scale: i8,
@@ -439,14 +468,17 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [f64] unit value
     /// and a quantity of the same type
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// unit value [f64]  the unit value from which compute the rest of the values
+    /// 
     /// qty [f64]  quantity of items sold
+    /// 
     /// scale [i8] decimal scale to round values
+    /// 
     fn compute_from_f64(
-        &self,
+        &mut self,
         unit_value: f64,
         qty: f64,
         scale: i8,
@@ -454,22 +486,95 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [BigDecimal] unit value
     /// and a quantity of the same type
-    /// 
+    ///
     /// # Params
-    /// 
+    ///
     /// unit value [BigDecimal]  the unit value from which compute the rest of the values
+    /// 
     /// qty [BigDecimal]  quantity of items sold
+    /// 
     /// scale [i8] decimal scale to round values
+    /// 
     fn compute(
-        &self,
+        &mut self,
         unit_value: BigDecimal,
         qty: BigDecimal,
         scale: i8,
     ) -> Result<Calculation, BagginsError>;
+
+    /// returns the taxable used to calculate the stage tax
+    /// 
+    /// # Params
+    /// 
+    /// stage [tax_stage::Stage] tax stage from which get the taxable
+    /// 
+    fn taxable(&mut self, stage: tax_stage::Stage) -> Option<BigDecimal>;
+
+    /// an utility to calculate a tax directly
+    /// 
+    /// # Params
+    /// 
+    /// taxable [BigDecimal] value to tax
+    /// 
+    /// qty     [BigDecimal] quantity being sold (some tax needs to know this value to be calculated)
+    /// 
+    /// value   [BigDecimal] percent or amount to apply as tax
+    /// 
+    /// mode    [tax::Type]  wheter the tax is percentual, amount by unit or amount by line
+    /// 
+    fn line_tax(
+        &mut self,
+        taxable: BigDecimal,
+        qty: BigDecimal,
+        value: BigDecimal,
+        mode: tax::Type,
+    ) -> BigDecimal;
+
+    /// an utility to calculate a tax directly using [String]s as entry.
+    /// Converts values to BigDecimal.
+    /// 
+    /// # Params
+    /// 
+    /// taxable [String] value to tax
+    /// 
+    /// qty     [String] quantity being sold (some tax needs to know this value to be calculated)
+    /// 
+    /// value   [String] percent or amount to apply as tax
+    /// 
+    /// mode    [tax::Type]  wheter the tax is percentual, amount by unit or amount by line
+    /// 
+    fn line_tax_from_str<S: Into<String>>(
+        &mut self,
+        taxable: S,
+        qty: S,
+        value: S,
+        mode: tax::Type,
+    ) -> Result<BigDecimal, tax::TaxError>;
+
+    /// an utility to calculate a tax directly using [f64]s as entry. Some precission could be loss.
+    /// Converts values to BigDecimal.
+    /// 
+    /// # Params
+    /// 
+    /// taxable [f64] value to tax
+    /// 
+    /// qty     [f64] quantity being sold (some tax needs to know this value to be calculated)
+    /// 
+    /// value   [f64] percent or amount to apply as tax
+    /// 
+    /// mode    [tax::Type]  wheter the tax is percentual, amount by unit or amount by line
+    /// 
+    fn line_tax_from_f64(
+        &mut self,
+        taxable: f64,
+        qty: f64,
+        value: f64,
+        mode: tax::Type,
+    ) -> Result<BigDecimal, tax::TaxError>;
 }
 
 /// Able to calculate detail lines.
-/// 
+///
 /// Delegates the heavy lifting to [tax::ComputedTax] and [discount::ComputedDiscount]
 ///
 /// # Example
@@ -522,7 +627,13 @@ impl DetailCalculator {
     }
 }
 
+
 impl Calculator for DetailCalculator {
+    
+    /// 
+    /// ```
+    /// 
+    /// ```
     fn add_discount(
         &mut self,
         discount: BigDecimal,
@@ -577,7 +688,7 @@ impl Calculator for DetailCalculator {
     }
 
     fn compute_from_brute(
-        &self,
+        &mut self,
         brute: BigDecimal,
         qty: BigDecimal,
         scale: i8,
@@ -600,7 +711,7 @@ impl Calculator for DetailCalculator {
     }
 
     fn compute_from_brute_f64(
-        &self,
+        &mut self,
         brute: f64,
         qty: f64,
         scale: i8,
@@ -621,7 +732,7 @@ impl Calculator for DetailCalculator {
     }
 
     fn compute_from_brute_str<S: Into<String>>(
-        &self,
+        &mut self,
         brute: S,
         qty: S,
         scale: i8,
@@ -642,7 +753,7 @@ impl Calculator for DetailCalculator {
     }
 
     fn compute_from_str<S: Into<String>>(
-        &self,
+        &mut self,
         unit_value: S,
         qty: S,
         scale: i8,
@@ -658,14 +769,12 @@ impl Calculator for DetailCalculator {
                     Err(e) => Err(BagginsError::InvalidDecimalValue(format!("qty {e}"))),
                 }
             }
-            Err(e) => Err(BagginsError::InvalidDecimalValue(format!(
-                "{e} unit value"
-            ))),
+            Err(e) => Err(BagginsError::InvalidDecimalValue(format!("{e} unit value"))),
         }
     }
 
     fn compute_from_f64(
-        &self,
+        &mut self,
         unit_value: f64,
         qty: f64,
         scale: i8,
@@ -686,7 +795,7 @@ impl Calculator for DetailCalculator {
     }
 
     fn compute(
-        &self,
+        &mut self,
         unit_value: BigDecimal,
         qty: BigDecimal,
         scale: i8,
@@ -749,6 +858,44 @@ impl Calculator for DetailCalculator {
                 unit_value, qty
             ))),
         }
+    }
+
+    fn taxable(&mut self, stage: tax_stage::Stage) -> Option<BigDecimal> {
+        self.tax_handler.taxable(stage)
+    }
+
+    fn line_tax(
+        &mut self,
+        taxable: BigDecimal,
+        qty: BigDecimal,
+        value: BigDecimal,
+        mode: tax::Type,
+    ) -> BigDecimal {
+        self.tax_handler.clone().line_tax(taxable, qty, value, mode)
+    }
+
+    fn line_tax_from_str<S: Into<String>>(
+        &mut self,
+        taxable: S,
+        qty: S,
+        value: S,
+        mode: tax::Type,
+    ) -> Result<BigDecimal, tax::TaxError> {
+        self.tax_handler
+            .clone()
+            .line_tax_from_str(taxable, qty, value, mode)
+    }
+
+    fn line_tax_from_f64(
+        &mut self,
+        taxable: f64,
+        qty: f64,
+        value: f64,
+        mode: tax::Type,
+    ) -> Result<BigDecimal, tax::TaxError> {
+        self.tax_handler
+            .clone()
+            .line_tax_from_f64(taxable, qty, value, mode)
     }
 }
 

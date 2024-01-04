@@ -1,7 +1,7 @@
-use bigdecimal::BigDecimal;
 use baggins::tax::tax_stage::Stage;
 use baggins::tax::TaxComputer;
 use baggins::tax::Type;
+use bigdecimal::BigDecimal;
 use std::str::FromStr;
 
 #[test]

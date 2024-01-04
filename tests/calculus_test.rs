@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
-use bigdecimal::BigDecimal;
 use baggins::{discount, tax, Calculator};
+use bigdecimal::BigDecimal;
 
 #[test]
 fn test_baggins_compute() {
@@ -28,7 +28,11 @@ fn test_baggins_compute() {
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
     );
-    assert!(err.is_none(), "error adding percentual 1 amount unit tax {:?}", err);
+    assert!(
+        err.is_none(),
+        "error adding percentual 1 amount unit tax {:?}",
+        err
+    );
 
     let r = c.compute(
         BigDecimal::from_str("100.0").unwrap(),
@@ -71,7 +75,11 @@ fn test_baggins_compute_from_brute() {
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
     );
-    assert!(err.is_none(), "error adding percentual 1 amount unit tax {:?}", err);
+    assert!(
+        err.is_none(),
+        "error adding percentual 1 amount unit tax {:?}",
+        err
+    );
 
     let r = c.compute_from_brute(
         BigDecimal::from_str("208.4800").unwrap(),
@@ -115,7 +123,11 @@ fn test_baggins_compute_with_line_discount() {
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
     );
-    assert!(err.is_none(), "error adding percentual 1 amount unit tax {:?}", err);
+    assert!(
+        err.is_none(),
+        "error adding percentual 1 amount unit tax {:?}",
+        err
+    );
 
     let r = c.compute(
         BigDecimal::from_str("100.0").unwrap(),
@@ -159,7 +171,11 @@ fn test_baggins_compute_with_line_discount_from_brute() {
         tax::tax_stage::Stage::OverTaxable,
         tax::Type::AmountUnit,
     );
-    assert!(err.is_none(), "error adding percentual 1 amount unit tax {:?}", err);
+    assert!(
+        err.is_none(),
+        "error adding percentual 1 amount unit tax {:?}",
+        err
+    );
 
     let r = c.compute_from_brute(
         BigDecimal::from_str("206.1600").unwrap(),

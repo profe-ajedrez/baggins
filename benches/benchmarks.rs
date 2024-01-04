@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
-use bigdecimal::BigDecimal;
 use baggins::{
     discount::{ComputedDiscount, DiscountComputer, Type},
     tax, Calculator,
 };
+use bigdecimal::BigDecimal;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
@@ -33,13 +33,11 @@ fn bench_compute(c: &mut Criterion) {
     let _ = cl.add_discount_from_str("10.56", Type::AmountUnit);
     let _ = cl.add_discount(BigDecimal::from_str("1.5").unwrap(), Type::AmountLine);
 
-    let _ = cl
-        .add_tax_from_str(
-            "16.0",
-            tax::tax_stage::Stage::OverTaxable,
-            tax::Type::Percentual,
-        );
-        
+    let _ = cl.add_tax_from_str(
+        "16.0",
+        tax::tax_stage::Stage::OverTaxable,
+        tax::Type::Percentual,
+    );
 
     let _ = cl.add_tax_from_str(
         "1.0",

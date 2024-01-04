@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.7] - 2024-01-04
+
+* Adds taxable method to get the value of the taxable used in the tax stage.
+
+* implements fmt::Display trait for CalculationF64
+
+* introduces line_tax methods
+
+* Adds more doc blocks.
+
 ## [0.1.6] - 2023-12-31
 
 * Corrects crate's definition
