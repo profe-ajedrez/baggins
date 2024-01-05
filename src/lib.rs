@@ -280,10 +280,10 @@ impl Default for Calculation {
 
 impl fmt::Display for Calculation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {} )",
+        write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {}, recalculated_unit_value {} )",
             self.net,
             self.brute,
-            self.tax, self.discount, self.net_wout_disc, self.brute_wout_disc, self.tax_wout_disc, self.unit_value, self.total_discount_percent
+            self.tax, self.discount, self.net_wout_disc, self.brute_wout_disc, self.tax_wout_disc, self.unit_value, self.total_discount_percent, self.recalculated_unit_value,
         )
     }
 }
