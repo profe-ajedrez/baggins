@@ -185,6 +185,7 @@ impl Calculation {
             tax_wout_disc: self.tax_wout_disc.to_f64()?,
             unit_value: self.unit_value.to_f64()?,
             total_discount_percent: self.total_discount_percent.to_f64()?,
+            recalculated_unit_value: self.recalculated_unit_value.to_f64()?,
         })
     }
 
@@ -210,6 +211,7 @@ impl Calculation {
             tax_wout_disc: self.tax_wout_disc.to_string(),
             unit_value: self.unit_value.to_string(),
             total_discount_percent: self.total_discount_percent.to_string(),
+            recalculated_unit_value: self.recalculated_unit_value.to_string(),
         }
     }
 
@@ -298,14 +300,15 @@ pub struct CalculationF64 {
     pub tax_wout_disc: f64,
     pub unit_value: f64,
     pub total_discount_percent: f64,
+    pub recalculated_unit_value: f64,
 }
 
 impl fmt::Display for CalculationF64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {} )",
+        write!(f, "net {}, brute {}, tax {}, discount {}, net_wout_disc {}, brute_wout_disc {}, tax_wout_disc {}, unit_value {}, total_discount_percent {}, recalculated_unit_value {} )",
             self.net,
             self.brute,
-            self.tax, self.discount, self.net_wout_disc, self.brute_wout_disc, self.tax_wout_disc, self.unit_value, self.total_discount_percent
+            self.tax, self.discount, self.net_wout_disc, self.brute_wout_disc, self.tax_wout_disc, self.unit_value, self.total_discount_percent, self.recalculated_unit_value
         )
     }
 }
@@ -322,6 +325,7 @@ pub struct CalculationString {
     pub tax_wout_disc: String,
     pub unit_value: String,
     pub total_discount_percent: String,
+    pub recalculated_unit_value: String,
 }
 
 

@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.8] - 2024-01-05
+## [0.1.9] - 2024-01-05
 
 * Adds field `recalculated_unit_value` to structs `Calculation`, `CalculationF64`, `CalculationString` 
              to store unit value recalculated from brute after round 
