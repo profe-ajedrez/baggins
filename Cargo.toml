@@ -1,6 +1,6 @@
 [package]
 name = "baggins"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 authors = ["Andrés Reyes El Programador Pobre"]
 description = "Utilities to Perform Sales Calculation Operations"

@@ -12,7 +12,7 @@
 //! El foco está en la facilidad de uso y en aprender Rust, por lo que hay muchas oportunidades de mejora.
 //!
 //!
-use std::{fmt, str::FromStr};
+use std::{fmt, str::FromStr, num::NonZeroU64};
 
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
 use discount::DiscountComputer;
@@ -105,7 +105,7 @@ pub fn inverse() -> BigDecimal {
     BigDecimal::from_str("-1.0").unwrap()
 }
 
-/// handy utility to get 0.0 as BigDecimal. Just a wrapper for BigDecimal::zero()
+/// handy utility to get 0.0 as BigDecimal. Just a wrapper for zero()
 pub fn zero() -> BigDecimal {
     BigDecimal::zero()
 }
@@ -127,8 +127,12 @@ pub struct Calculation {
     pub brute_wout_disc: BigDecimal,
     /// tax without discount. Stores the cumulated taxes plus the discounted value
     pub tax_wout_disc: BigDecimal,
-    /// stores the unit value
+    /// stores the used unit value
     pub unit_value: BigDecimal,
+
+    /// stores the unit value recalculated from the untaxed, undiscounted brute divided by the quantity
+    pub recalculated_unit_value: BigDecimal,
+
     /// stores the total discount applied as a percentage
     pub total_discount_percent: BigDecimal,
 }
@@ -145,15 +149,16 @@ impl Calculation {
     ///  
     pub fn new() -> Self {
         Self {
-            net: BigDecimal::zero(),
-            brute: BigDecimal::zero(),
-            tax: BigDecimal::zero(),
-            discount: BigDecimal::zero(),
-            net_wout_disc: BigDecimal::zero(),
-            brute_wout_disc: BigDecimal::zero(),
-            tax_wout_disc: BigDecimal::zero(),
-            unit_value: BigDecimal::zero(),
-            total_discount_percent: BigDecimal::zero(),
+            net: zero(),
+            brute: zero(),
+            tax: zero(),
+            discount: zero(),
+            net_wout_disc: zero(),
+            brute_wout_disc: zero(),
+            tax_wout_disc: zero(),
+            unit_value: zero(),
+            recalculated_unit_value: zero(),
+            total_discount_percent: zero(),
         }
     }
 
@@ -240,9 +245,29 @@ impl Calculation {
             brute_wout_disc: self.brute_wout_disc.round(scale),
             tax_wout_disc: self.tax_wout_disc.round(scale),
             unit_value: self.unit_value.round(scale),
+            recalculated_unit_value: self.recalculated_unit_value.clone(),
             total_discount_percent: self.total_discount_percent.round(scale),
         }
     }
+
+    pub fn truncate(&self, scale: i8) -> Self {
+        let scale = u64::from_i8(scale).unwrap();
+        let scale = NonZeroU64::new(scale).unwrap();
+        Self {
+            net: self.net.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            tax: self.tax.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            discount: self.discount.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            brute: self.brute.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            net_wout_disc: self.net_wout_disc.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            brute_wout_disc: self.brute_wout_disc.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            tax_wout_disc: self.tax_wout_disc.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            unit_value: self.unit_value.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+            recalculated_unit_value: self.recalculated_unit_value.clone(),
+            total_discount_percent: self.total_discount_percent.with_precision_round(scale, bigdecimal::RoundingMode::Floor),
+        }
+    }
+
+    
 }
 
 impl Default for Calculation {
@@ -821,6 +846,7 @@ impl Calculator for DetailCalculator {
                         match r {
                             Ok(tx_wout) => {
                                 let net_wout = &unit_value * &qty;
+
                                 let calc = Calculation{
                                     brute: &net + &tx,
                                     total_discount_percent: hundred() * &d / &net_wout,
@@ -831,9 +857,18 @@ impl Calculator for DetailCalculator {
                                     discount: d,
                                     tax: tx,
                                     unit_value,
+                                    recalculated_unit_value: zero(),
                                 };
 
-                                Ok(calc.round(scale))
+                                let mut calc = calc.round(scale);
+                                calc.recalculated_unit_value = self.discount_handler.un_discount(
+                                    self.tax_handler.un_tax(
+                                        calc.brute.clone(), qty.clone()
+                                    ).unwrap(), 
+                                    qty.clone()
+                                ).unwrap();
+
+                                Ok(calc)
                             },
 
                             Err(e) => {

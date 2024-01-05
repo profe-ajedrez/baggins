@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.8] - 2024-01-05
+
+* Adds field `recalculated_unit_value` to structs `Calculation`, `CalculationF64`, `CalculationString` 
+             to store unit value recalculated from brute after round 
+
 ## [0.1.7] - 2024-01-04
 
 * Adds taxable method to get the value of the taxable used in the tax stage.
