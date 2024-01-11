@@ -1,6 +1,12 @@
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+//! tax
+//!
+//! `tax` module provides ways to calculate taxes.
+//!
 use std::{fmt, str::FromStr};
 
+use bigdecimal::{BigDecimal, FromPrimitive};
+
+#[derive(PartialEq)]
 /// The tax type
 /// A tax type could be percentual or a fixed amount, and the fixed amount tax
 /// could be by each unit or by everything being sold
@@ -10,9 +16,9 @@ use std::{fmt, str::FromStr};
 /// ```
 /// use baggins::tax;
 ///
-/// let tax_type = tax::Type::Percentual;
+/// let tax_type = tax::Mode::Percentual;
 /// ```
-pub enum Type {
+pub enum Mode {
     /// Percentual represents a tax calculated as percent value over a taxable
     Percentual,
 
@@ -33,7 +39,7 @@ pub enum Type {
     AmountUnit,
 }
 
-impl Type {
+impl Mode {
     pub fn from_i8(r#type: i8) -> Option<Self> {
         if r#type == 0 {
             return Some(Self::Percentual);
@@ -52,623 +58,615 @@ impl Type {
 }
 
 #[derive(Debug)]
-/// Represents possible errors in the computing of taxes
-pub enum TaxError {
-    /// the value over which calculate tax is negative
-    NegativeTaxable(f64),
-    /// the calculated tax is negative
-    NegativeTax(String),
-    /// the quatity being sold is negative
-    NegativeQty(f64),
-    /// the percentage of the tax is negative
-    NegativePercent(f64),
-    /// the amoun by unit of the tax is negative
-    NegativeAmountByUnit(f64),
-    /// the amoun by line of the tax is negative
-    NegativeAmountByLine(f64),
-    /// a calculation o convertion produced an invalid  Bigdecimal value
-    InvalidDecimal(String),
-    /// the tax stage not exists
-    InvalidTaxStage,
-    /// other error
-    Other,
+/// Possible errors of the tax processing
+pub enum TaxError<S: Into<String>> {
+    /// a negative value is not allowed, How do you tax 10% of -10?, or the -10% of 10
+    NegativeValue(S),
+
+    /// discounts beyond a maximum value is not allowed
+    OverMaxDiscount(S),
+
+    /// we work with [BigDecimal] values. Values which cannot be converted will trigger this error
+    InvalidDecimal(S),
+
+    /// a tax should be among the allowed modes
+    InvalidDiscountMode(S),
+
+    DivisionByZero(S),
+
+    /// something was wrong
+    Other(S),
 }
 
-impl fmt::Display for TaxError {
+impl<S: Into<String> + Clone> fmt::Display for TaxError<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            TaxError::NegativeTaxable(ref taxable) => write!(
+        match self {
+            TaxError::NegativeValue(info) => write!(
                 f,
-                "Negative taxable Error: {taxable} taxable cannot be negative"
+                "Negative value Error. <discountable>, <tax> and <quantity> cannot be negative. {}",
+                info.clone().into(),
             ),
-            TaxError::NegativeTax(ref tax) => {
-                write!(f, "Negative tax Error: {tax} taxable cannot be negative")
+            TaxError::OverMaxDiscount(info) => {
+                write!(f, "Over max tax error. {}", info.clone().into())
             }
-            TaxError::NegativeQty(ref value) => write!(f, "Negative quantity value Error: {value}"),
-            TaxError::NegativePercent(ref value) => {
-                write!(f, "Negative percentual tax value Error: {value}")
+            TaxError::InvalidDecimal(info) => {
+                write!(f, "Invalid decimal value error {}", info.clone().into())
             }
-            TaxError::NegativeAmountByUnit(ref value) => {
-                write!(f, "Negative amount by unit tax value Error: {value}")
+            TaxError::InvalidDiscountMode(info) => {
+                write!(f, "Invalid tax Stage value. {}", info.clone().into())
             }
-            TaxError::NegativeAmountByLine(ref value) => {
-                write!(f, "Negative amount by line tax value Error: {value}")
-            }
-            TaxError::InvalidDecimal(ref value) => write!(f, "Invalid decimal value {value}"),
-            TaxError::InvalidTaxStage => write!(f, "Invalid Tax Stage value"),
-            TaxError::Other => write!(f, "Unknown error!"),
+            TaxError::DivisionByZero(info) => write!(
+                f,
+                "division by zero when calculating  {}",
+                info.clone().into()
+            ),
+            TaxError::Other(info) => write!(f, "Unknown error! {}", info.clone().into()),
         }
     }
 }
 
-/// works with tax calculations stages
-pub mod tax_stage {
-    use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive, Zero};
+#[derive(Debug, PartialEq)]
+pub enum Stage {
+    /// Taxes that are calculated directly on the value of the products
+    OverTaxable,
 
-    use crate::{hundred, one};
+    /// Taxes that are calculated on the values of the products plus the
+    /// over taxable tax calculated for them
+    OverTax,
 
-    use super::TaxError;
+    /// taxes calculated the same as overtaxables, but are not considered
+    /// for the calculation of overtaxes.
+    OverTaxIgnorable,
+}
 
-    #[derive(Debug, PartialEq)]
-    pub enum Stage {
-        /// Taxes that are calculated directly on the value of the products
-        OverTaxable,
-
-        /// Taxes that are calculated on the values of the products plus the
-        /// over taxable tax calculated for them
-        OverTax,
-
-        /// taxes calculated the same as overtaxables, but are not considered
-        /// for the calculation of overtaxes.
-        OverTaxIgnorable,
-    }
-
-    /// Represents when a tax should be calculated.
-    /// There are 3 stages in which a tax could be calculated
+/// Represents when a tax should be calculated.
+/// There are 3 stages in which a tax could be calculated
+///
+/// 1 directly on the values of the products being sold, we call these taxes
+/// over taxables
+///
+/// 2 on the value obtained from applying overtaxable taxes, we call these
+/// overtaxes and they are the typical case of tax on tax
+///
+/// 3 are calculated the same as overtaxable taxes, but they are not considered
+/// for the calculation of overtax taxes, we call these ignorable overtaxes
+impl Stage {
+    /// returns an [`Option<Stage>`] over an [i8] argument where a value of
     ///
-    /// 1 directly on the values of the products being sold, we call these taxes
-    /// over taxables
+    /// 0 returns an Some(Stage::OverTaxable)
     ///
-    /// 2 on the value obtained from applying overtaxable taxes, we call these
-    /// overtaxes and they are the typical case of tax on tax
+    /// 1 returns an Some(Stage::OverTax)
     ///
-    /// 3 are calculated the same as overtaxable taxes, but they are not considered
-    /// for the calculation of overtax taxes, we call these ignorable overtaxes
-    impl Stage {
-        /// returns an [`Option<Stage>`] over an [i8] argument where a value of
-        ///
-        /// 0 returns an Some(Stage::OverTaxable)
-        ///
-        /// 1 returns an Some(Stage::OverTax)
-        ///
-        /// 2 returns an some(Stage::OverTaxIgnorable)
-        ///
-        /// Other values returns None
-        ///
-        /// ```
-        /// use baggins::tax;
-        ///
-        /// let stage = tax::tax_stage::Stage::from_i8(0);
-        /// ```        
-        pub fn from_i8(stage: i8) -> Option<Self> {
-            if stage == 0 {
-                return Some(Stage::OverTaxable);
-            }
-
-            if stage == 1 {
-                return Some(Stage::OverTax);
-            }
-
-            if stage == 2 {
-                return Some(Stage::OverTaxIgnorable);
-            }
-
-            None
+    /// 2 returns an some(Stage::OverTaxIgnorable)
+    ///
+    /// Other values returns None
+    ///
+    /// ```
+    /// use baggins::tax;
+    ///
+    /// let stage = tax::Stage::from_i8(0);
+    /// ```        
+    pub fn from_i8(stage: i8) -> Option<Self> {
+        if stage == 0 {
+            return Some(Stage::OverTaxable);
         }
+
+        if stage == 1 {
+            return Some(Stage::OverTax);
+        }
+
+        if stage == 2 {
+            return Some(Stage::OverTaxIgnorable);
+        }
+
+        None
     }
-
-    pub trait Stager {
-        /// adds a BigDecimal value as a percentual tax to the stage
-        fn add_percentual(&mut self, percent: BigDecimal) -> Option<TaxError>;
-
-        /// adds a BigDecimal value as an amount unit tax to the stage
-        fn add_amount_by_qty(&mut self, amount: BigDecimal) -> Option<TaxError>;
-
-        /// adds a BigDecimal value as an amount line tax to the stage
-        fn add_amount_by_line(&mut self, amount: BigDecimal) -> Option<TaxError>;
-
-        /// calculates the stage taxes from BigDecimal taxable and quantity
-        fn tax(&mut self, taxable: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError>;
-
-        /// adds a f64 value as a percentual tax to the stage. This could cause precision loss
-        fn add_percentual_from_f64(&mut self, percent: f64) -> Option<TaxError>;
-
-        /// adds a f64 value as an amount unit tax to the stage. This could cause precision loss
-        fn add_amount_by_qty_from_f64(&mut self, amount: f64) -> Option<TaxError>;
-
-        /// adds a f64 value as an amount line tax to the stage. This could cause precision loss
-        fn add_amount_by_line_from_f64(&mut self, amount: f64) -> Option<TaxError>;
-
-        /// calculates the stage taxes from f64 taxable and quantity
-        fn tax_from_f64(&mut self, taxable: f64, qty: f64) -> Result<BigDecimal, TaxError>;
-
-        /// returns the cumulative percentual value of the percentual taxes of the stage
-        fn percent(&self) -> BigDecimal;
-
-        /// returns the cumulative value of the amount line taxes of the stage
-        fn amount_line(&self) -> BigDecimal;
-
-        /// returns the cumulative value of the amount unit taxes of the stage
-        fn amount_by_qty(&self) -> BigDecimal;
-
-        /// removes stage taxes from the taxed BigDecimal value
-        fn un_tax(&self, tax: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError>;
-
-        /// removes stage taxes from the taxed f64 value
-        fn un_tax_from_f64(&self, tax: f64, qty: f64) -> Result<BigDecimal, TaxError>;
-
-        // returns the taxable used to calculate the taxes in the stage
-        fn taxable(self) -> Option<BigDecimal>;
-    }
-
-    #[derive(Clone)]
-    /// Able to store tax data belonging to a given stage and make calculations
-    /// on it
-    pub struct TaxStage {
-        percentuals: BigDecimal,
-        amount_line: BigDecimal,
-        amount_unit: BigDecimal,
-        taxable: Option<BigDecimal>,
-    }
-
-    impl TaxStage {
-        /// returns a TaxStage ready to use
-        ///
-        /// # Example
-        ///
-        /// ```
-        /// use baggins::tax;
-        ///
-        /// let tax_st = tax::tax_stage::TaxStage::new();
-        /// ```
-        pub fn new() -> Self {
-            Self {
-                percentuals: BigDecimal::zero(),
-                amount_line: BigDecimal::zero(),
-                amount_unit: BigDecimal::zero(),
-                taxable: None,
-            }
-        }
-    }
-
-    impl Default for TaxStage {
-        fn default() -> Self {
-            Self::new()
-        }
-    }
-
-    impl Stager for TaxStage {
-        fn add_percentual_from_f64(&mut self, percent: f64) -> Option<TaxError> {
-            let opt_dec = BigDecimal::from_f64(percent);
-
-            match opt_dec {
-                Some(p) => {
-                    self.percentuals = &self.percentuals + p;
-                    None
-                }
-
-                None => Some(TaxError::InvalidDecimal(format!("{percent}"))),
-            }
-        }
-
-        fn add_amount_by_qty_from_f64(&mut self, amount: f64) -> Option<TaxError> {
-            let opt_dec = BigDecimal::from_f64(amount);
-
-            match opt_dec {
-                Some(a) => {
-                    self.amount_unit = &self.amount_unit + a;
-                    None
-                }
-
-                None => Some(TaxError::InvalidDecimal(format!("{amount}"))),
-            }
-        }
-
-        fn add_amount_by_line_from_f64(&mut self, amount: f64) -> Option<TaxError> {
-            let opt_dec = BigDecimal::from_f64(amount);
-
-            match opt_dec {
-                Some(a) => {
-                    self.amount_line = &self.amount_line + a;
-                    None
-                }
-
-                None => Some(TaxError::InvalidDecimal(format!("{amount}"))),
-            }
-        }
-
-        fn tax_from_f64(&mut self, taxable: f64, qty: f64) -> Result<BigDecimal, TaxError> {
-            if taxable < 0.0 {
-                return Err(TaxError::NegativeTaxable(taxable));
-            }
-
-            if qty < 0.0 {
-                return Err(TaxError::NegativeQty(qty));
-            }
-
-            let txble = BigDecimal::from_f64(taxable).unwrap();
-            let qt = BigDecimal::from_f64(qty).unwrap();
-
-            self.taxable = Some(txble.clone());
-
-            Ok(
-                (&self.percentuals / hundred() * txble + &self.amount_unit) * qt
-                    + &self.amount_line,
-            )
-        }
-
-        fn percent(&self) -> BigDecimal {
-            self.percentuals.clone()
-        }
-
-        fn amount_line(&self) -> BigDecimal {
-            self.amount_line.clone()
-        }
-
-        fn amount_by_qty(&self) -> BigDecimal {
-            self.amount_unit.clone()
-        }
-
-        fn add_percentual(&mut self, percent: BigDecimal) -> Option<TaxError> {
-            let opt_p = percent.to_f64();
-
-            match opt_p {
-                Some(p) => {
-                    if percent < BigDecimal::zero() {
-                        return Some(TaxError::NegativePercent(p));
-                    }
-
-                    self.percentuals = &self.percentuals + percent;
-                    None
-                }
-
-                None => Some(TaxError::InvalidDecimal(format!(
-                    "invalid decimal value for percentual tax: {}",
-                    percent
-                ))),
-            }
-        }
-
-        fn add_amount_by_qty(&mut self, amount: BigDecimal) -> Option<TaxError> {
-            let opt_a = amount.to_f64();
-
-            match opt_a {
-                Some(a) => {
-                    if amount < BigDecimal::zero() {
-                        return Some(TaxError::NegativePercent(a));
-                    }
-
-                    self.amount_unit = &self.amount_unit + amount;
-                    None
-                }
-
-                None => Some(TaxError::InvalidDecimal(format!(
-                    "invalid decimal value for amount by qty tax: {}",
-                    amount
-                ))),
-            }
-        }
-
-        fn add_amount_by_line(&mut self, amount: BigDecimal) -> Option<TaxError> {
-            let opt_a = amount.to_f64();
-
-            match opt_a {
-                Some(a) => {
-                    if amount < BigDecimal::zero() {
-                        return Some(TaxError::NegativePercent(a));
-                    }
-
-                    self.amount_line = &self.amount_line + amount;
-                    None
-                }
-
-                None => Some(TaxError::InvalidDecimal(format!(
-                    "invalid decimal value for amount by qty tax: {}",
-                    amount
-                ))),
-            }
-        }
-
-        fn tax(&mut self, taxable: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError> {
-            let opt_tx = taxable.to_f64();
-
-            match opt_tx {
-                Some(txbl) => {
-                    let opt_qty = qty.to_f64();
-
-                    match opt_qty {
-                        Some(q) => {
-                            if txbl < 0.0 {
-                                return Err(TaxError::NegativeTaxable(txbl));
-                            }
-
-                            if q < 0.0 {
-                                return Err(TaxError::NegativeQty(q));
-                            }
-
-                            self.taxable = Some(taxable.clone());
-
-                            Ok(
-                                (&self.percentuals / hundred() * taxable + &self.amount_unit) * qty
-                                    + &self.amount_line,
-                            )
-                        }
-                        None => Err(TaxError::InvalidDecimal(format!(
-                            "invalid decimal value for quantity {}",
-                            qty
-                        ))),
-                    }
-                }
-                None => Err(TaxError::InvalidDecimal(format!(
-                    "invalid decimal value for taxable {}",
-                    taxable
-                ))),
-            }
-        }
-
-        fn un_tax(&self, tax: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError> {
-            let opt_tax = tax.to_f64();
-
-            match opt_tax {
-                Some(tx) => {
-                    let opt_qty = qty.to_f64();
-
-                    match opt_qty {
-                        Some(q) => {
-                            if q < 0.0 {
-                                return Err(TaxError::NegativeQty(q));
-                            }
-
-                            if tx < 0.0 {
-                                return Err(TaxError::NegativeTax(format!("{}", tx)));
-                            }
-
-                            let wout_amount_line = tax - self.amount_line();
-                            let wout_amount_unit = wout_amount_line - self.amount_by_qty() * qty;
-                            let percent = one() + &self.percentuals / hundred();
-                            let untaxed = wout_amount_unit / percent;
-
-                            if untaxed < BigDecimal::zero() {
-                                return Err(TaxError::NegativeTax(format!(
-                                    "untexed was calculated as a negative value {}",
-                                    untaxed
-                                )));
-                            }
-
-                            Ok(untaxed)
-                        }
-
-                        None => Err(TaxError::InvalidDecimal(format!(
-                            "invalid decimal value for quantity {}",
-                            qty
-                        ))),
-                    }
-                }
-
-                None => Err(TaxError::InvalidDecimal(format!(
-                    "invalid decimal value for tax {}",
-                    tax
-                ))),
-            }
-        }
-
-        fn un_tax_from_f64(&self, tax: f64, qty: f64) -> Result<BigDecimal, TaxError> {
-            let opt_tx = BigDecimal::from_f64(tax);
-
-            match opt_tx {
-                Some(tx) => {
-                    let opt_qty = BigDecimal::from_f64(qty);
-
-                    match opt_qty {
-                        Some(q) => {
-                            if tax < 0.0 {
-                                return Err(TaxError::NegativeTax(format!(
-                                    "untexed was calculated as a negative value {tax}"
-                                )));
-                            }
-
-                            if qty < 0.0 {
-                                return Err(TaxError::NegativeQty(qty));
-                            }
-
-                            let wout_amount_line = tx - self.amount_line();
-                            let wout_amount_unit = wout_amount_line - self.amount_by_qty() * q;
-                            let percent = one() + &self.percentuals / hundred();
-                            let untaxed = wout_amount_unit / percent;
-
-                            if untaxed < BigDecimal::zero() {
-                                return Err(TaxError::NegativeTax(format!(
-                                    "untexed was calculated as a negative value {}",
-                                    untaxed
-                                )));
-                            }
-
-                            Ok(untaxed)
-                        }
-                        None => Err(TaxError::InvalidDecimal(format!(
-                            "invalid decimal value for quantity {}",
-                            qty
-                        ))),
-                    }
-                }
-                None => Err(TaxError::InvalidDecimal(format!(
-                    "invalid decimal value for taxable {}",
-                    tax
-                ))),
-            }
-        }
-
-        fn taxable(self) -> Option<BigDecimal> {
-            self.taxable
+}
+
+// Represents a thing able to stand as a tax stage and calculate over its recorded taxes
+pub trait Stager {
+    /// adds a BigDecimal value as a percentual tax to the stage.
+    /// Could return [TaxError::NegativeValue] boxed in an [Option]
+    fn add_percentual(&mut self, percent: BigDecimal) -> Option<TaxError<String>>;
+
+    /// adds a BigDecimal value as an amount unit tax to the stage
+    /// Could return [TaxError::NegativeValue] boxed in an [Option]
+    fn add_amount_by_qty(&mut self, amount: BigDecimal) -> Option<TaxError<String>>;
+
+    /// adds a BigDecimal value as an amount line tax to the stage
+    /// Could return [TaxError::NegativeValue] boxed in an [Option]
+    fn add_amount_by_line(&mut self, amount: BigDecimal) -> Option<TaxError<String>>;
+
+    /// calculates the stage taxes from BigDecimal taxable and quantity
+    /// Could return [TaxError::NegativeValue]
+    fn tax(&mut self, taxable: BigDecimal, qty: BigDecimal)
+        -> Result<BigDecimal, TaxError<String>>;
+
+    /// adds a f64 value as a percentual tax to the stage. This could cause precision loss
+    /// Could return [TaxError::NegativeValue] boxed in an [Option]    
+    fn add_percentual_from_f64(&mut self, percent: f64) -> Option<TaxError<String>>;
+
+    /// adds a f64 value as an amount unit tax to the stage. This could cause precision loss
+    /// Could return [TaxError::InvalidDecimal] [TaxError::NegativeValue] boxed in an [Option]    
+    fn add_amount_by_qty_from_f64(&mut self, amount: f64) -> Option<TaxError<String>>;
+
+    /// adds a f64 value as an amount line tax to the stage. This could cause precision loss
+    /// Could return [TaxError::NegativeValue] boxed in an [Option]
+    fn add_amount_by_line_from_f64(&mut self, amount: f64) -> Option<TaxError<String>>;
+
+    /// calculates the stage taxes from f64 taxable and quantity
+    /// Could return [TaxError::NegativeValue]
+    fn tax_from_f64(&mut self, taxable: f64, qty: f64) -> Result<BigDecimal, TaxError<String>>;
+
+    /// calculates the stage taxes from [String] taxable and quantity
+    /// Could return [TaxError::NegativeValue]
+    fn tax_from_str<S: Into<String>>(
+        &mut self,
+        taxable: S,
+        qty: S,
+    ) -> Result<BigDecimal, TaxError<String>>;
+
+    /// adds a [String] value as a percentual tax to the stage.
+    /// Could return [TaxError::InvalidDecimal] [TaxError::NegativeValue] boxed in an [Option]
+    fn add_percentual_from_str<S: Into<String>>(&mut self, percent: S) -> Option<TaxError<String>>;
+
+    /// adds a [String] value as an amount unit tax to the stage.
+    /// Could return [TaxError::InvalidDecimal] [TaxError::NegativeValue] boxed in an [Option]
+    fn add_amount_by_qty_from_str<S: Into<String>>(
+        &mut self,
+        amount: S,
+    ) -> Option<TaxError<String>>;
+
+    /// adds a [String] value as an amount line tax to the stage.
+    /// Could return [TaxError::InvalidDecimal] [TaxError::NegativeValue] boxed in an [Option]
+    fn add_amount_by_line_from_str<S: Into<String>>(
+        &mut self,
+        amount: S,
+    ) -> Option<TaxError<String>>;
+
+    /// returns the cumulative percentual value of the percentual taxes of the stage
+    /// could return [`BigDecimal::Zero`]
+    fn percent(&self) -> BigDecimal;
+
+    /// returns the cumulative value of the amount line taxes of the stage
+    /// could return [`BigDecimal::Zero`]
+    fn amount_line(&self) -> BigDecimal;
+
+    /// returns the cumulative value of the amount unit taxes of the stage
+    /// could return [`BigDecimal::Zero`]
+    fn amount_by_qty(&self) -> BigDecimal;
+}
+
+#[derive(Clone)]
+/// Able to store tax data belonging to a given stage and make calculations with them
+///
+/// # Example
+///
+/// ```rust
+/// use baggins::tax::{TaxComputer, Taxer, Stage, Mode};
+/// use bigdecimal::{BigDecimal, FromPrimitive};
+/// use std::str::FromStr;
+///
+/// let mut taxer = baggins::tax::TaxComputer::new();
+///
+/// let err = taxer.add_tax_from_f64(18.0, Stage::OverTaxable, Mode::Percentual);
+/// assert!(err.is_none(), "error triggered adding first f64 tax");
+///
+/// let err = taxer.add_tax_from_f64(10.0, Stage::OverTaxable, Mode::Percentual);
+/// assert!(err.is_none(), "error triggered adding second f64 tax");
+///
+/// let err = taxer.add_tax_from_f64(0.5, Stage::OverTaxable, Mode::AmountUnit);
+/// assert!(err.is_none(), "error triggered adding third f64 tax");
+///
+/// let r = taxer.tax_from_f64(24.576855, 4.0);
+///
+/// match r {
+///     Ok(tax) => {
+///         let expected =
+///             BigDecimal::from_str("29.52607759999999814226612215861678123474121093750000")
+///                 .unwrap();
+///         assert_eq!(tax, expected);
+///         println!("calculated_tax: {}", tax);
+///     }
+///
+///     Err(e) => {
+///         panic!("{e}")
+///     }
+/// }
+/// ```
+pub struct TaxStage {
+    percentuals: BigDecimal,
+    amount_line: BigDecimal,
+    amount_unit: BigDecimal,
+}
+
+impl TaxStage {
+    /// returns a TaxStage ready to use
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use baggins::tax::TaxStage;
+    ///
+    /// let tax_st = TaxStage::new();
+    /// ```
+    pub fn new() -> Self {
+        Self {
+            percentuals: crate::zero(),
+            amount_line: crate::zero(),
+            amount_unit: crate::zero(),
         }
     }
 }
 
-use crate::{hundred, inverse, tax::tax_stage::Stager};
+impl Default for TaxStage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
-/// A handler to the taxes calculation stage is represented here
-pub trait TaxComputer {
+impl fmt::Display for TaxStage {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "percentuals {} amount_line {} amount_unit {}",
+            self.percentuals, self.amount_line, self.amount_unit
+        )
+    }
+}
+
+impl Stager for TaxStage {
+    fn add_percentual(&mut self, percent: BigDecimal) -> Option<TaxError<String>> {
+        if percent < crate::zero() {
+            return Some(TaxError::NegativeValue(format!(
+                "negative value adding percentual tax {}",
+                percent
+            )));
+        }
+
+        self.percentuals = &self.percentuals + percent;
+        None
+    }
+
+    fn add_amount_by_qty(&mut self, amount: BigDecimal) -> Option<TaxError<String>> {
+        if amount < crate::zero() {
+            return Some(TaxError::NegativeValue(format!(
+                "negative value adding amount tax {}",
+                amount
+            )));
+        }
+
+        self.amount_unit = &self.amount_unit + amount;
+        None
+    }
+
+    fn add_amount_by_line(&mut self, amount: BigDecimal) -> Option<TaxError<String>> {
+        if amount < crate::zero() {
+            return Some(TaxError::NegativeValue(format!(
+                "negative value adding amount line tax {}",
+                amount
+            )));
+        }
+
+        self.amount_line = &self.amount_line + amount;
+        None
+    }
+
+    fn tax(
+        &mut self,
+        taxable: BigDecimal,
+        qty: BigDecimal,
+    ) -> Result<BigDecimal, TaxError<String>> {
+        if taxable < crate::zero() {
+            return Err(TaxError::NegativeValue(format!(
+                "negative taxable at calculating registered taxes{}",
+                taxable
+            )));
+        }
+
+        if qty < crate::zero() {
+            return Err(TaxError::NegativeValue(format!(
+                "negative quantity at calculating registered taxes {}",
+                qty
+            )));
+        }
+
+        if taxable == crate::zero() {
+            return Ok(crate::zero());
+        }
+
+        // println!("{} {}", taxable, self);
+
+        Ok(
+            (&taxable * &self.percentuals / crate::hundred() + &self.amount_unit) * &qty
+                + &self.amount_line,
+        )
+    }
+
+    fn add_percentual_from_f64(&mut self, percent: f64) -> Option<TaxError<String>> {
+        self.add_percentual(BigDecimal::from_f64(percent).unwrap_or(crate::inverse()))
+    }
+
+    fn add_amount_by_qty_from_f64(&mut self, amount: f64) -> Option<TaxError<String>> {
+        self.add_amount_by_qty(BigDecimal::from_f64(amount).unwrap_or(crate::inverse()))
+    }
+
+    fn add_amount_by_line_from_f64(&mut self, amount: f64) -> Option<TaxError<String>> {
+        self.add_amount_by_line(BigDecimal::from_f64(amount).unwrap_or(crate::inverse()))
+    }
+
+    fn tax_from_f64(&mut self, taxable: f64, qty: f64) -> Result<BigDecimal, TaxError<String>> {
+        self.tax(
+            BigDecimal::from_f64(taxable).unwrap_or(crate::inverse()),
+            BigDecimal::from_f64(qty).unwrap_or(crate::inverse()),
+        )
+    }
+
+    fn percent(&self) -> BigDecimal {
+        self.percentuals.clone()
+    }
+
+    fn amount_line(&self) -> BigDecimal {
+        self.amount_line.clone()
+    }
+
+    fn amount_by_qty(&self) -> BigDecimal {
+        self.amount_unit.clone()
+    }
+
+    fn tax_from_str<S: Into<String>>(
+        &mut self,
+        taxable: S,
+        qty: S,
+    ) -> Result<BigDecimal, TaxError<String>> {
+        let taxable = taxable.into();
+        let qty = qty.into();
+
+        match BigDecimal::from_str(&taxable) {
+            Ok(taxable) => match BigDecimal::from_str(&qty) {
+                Ok(qty) => self.tax(taxable, qty),
+                Err(err) => Err(TaxError::InvalidDecimal(err.to_string())),
+            },
+            Err(err) => Err(TaxError::InvalidDecimal(err.to_string())),
+        }
+    }
+
+    fn add_percentual_from_str<S: Into<String>>(&mut self, percent: S) -> Option<TaxError<String>> {
+        let percent = percent.into();
+
+        match BigDecimal::from_str(&percent) {
+            Ok(percent) => self.add_percentual(percent),
+            Err(err) => Some(TaxError::InvalidDecimal(format!(
+                "invalid percent value adding percentual from str {}",
+                err
+            ))),
+        }
+    }
+
+    fn add_amount_by_qty_from_str<S: Into<String>>(
+        &mut self,
+        amount: S,
+    ) -> Option<TaxError<String>> {
+        let amount = amount.into();
+
+        match BigDecimal::from_str(&amount) {
+            Ok(amount) => self.add_amount_by_qty(amount),
+            Err(err) => Some(TaxError::InvalidDecimal(format!(
+                "invalid amount value adding amount by qty from str {}",
+                err
+            ))),
+        }
+    }
+
+    fn add_amount_by_line_from_str<S: Into<String>>(
+        &mut self,
+        amount: S,
+    ) -> Option<TaxError<String>> {
+        let amount = amount.into();
+
+        match BigDecimal::from_str(&amount) {
+            Ok(amount) => self.add_amount_by_line(amount),
+            Err(err) => Some(TaxError::InvalidDecimal(format!(
+                "invalid amount value adding amount line from str {}",
+                err
+            ))),
+        }
+    }
+}
+
+/// A handler to the taxes calculation stages is represented here
+pub trait Taxer {
     fn over_taxables(&self) -> impl Stager;
     fn over_taxes(&self) -> impl Stager;
     fn over_tax_ignorables(&self) -> impl Stager;
 
-    fn add_tax_from_f64(
-        &mut self,
-        tax: f64,
-        stage: tax_stage::Stage,
-        tax_type: Type,
-    ) -> Option<TaxError>;
+    /// adds a [BigDecimal] value of the specified [Mode] to the specified [Stage]
+    /// Could returns [TaxError::NegativeValue] boxed in an [Option]
     fn add_tax(
         &mut self,
         tax: BigDecimal,
-        stage: tax_stage::Stage,
-        tax_type: Type,
-    ) -> Option<TaxError>;
+        stage: Stage,
+        tax_type: Mode,
+    ) -> Option<TaxError<String>>;
+
+    /// adds a [f64] value of the specified [Mode] to the specified [Stage]
+    /// Using f64 values may cause some precission loss
+    /// because some decimal values only can be represented as an aproximation as floats.
+    /// Could returns [TaxError::NegativeValue] boxed in an [Option]
+    fn add_tax_from_f64(
+        &mut self,
+        tax: f64,
+        stage: Stage,
+        tax_type: Mode,
+    ) -> Option<TaxError<String>>;
+
+    /// adds a [Into<String>] value of the specified [Mode] to the specified [Stage]    
+    /// Could returns [TaxError::NegativeValue] [TaxError::InvalidDecimal] boxed in an [Option]
     fn add_tax_from_str<S: Into<String>>(
         &mut self,
         tax: S,
-        stage: tax_stage::Stage,
-        tax_type: Type,
-    ) -> Option<TaxError>;
+        stage: Stage,
+        tax_type: Mode,
+    ) -> Option<TaxError<String>>;
 
-    fn compute_from_f64(&mut self, unit_value: f64, qty: f64) -> Result<BigDecimal, TaxError>;
+    /// returns the calculated cummulated tax value for the specified [BigDecimal] unit_value.
+    /// Could returns [TaxError::NegativeValue]
+    fn tax(
+        &mut self,
+        unit_value: BigDecimal,
+        qty: BigDecimal,
+    ) -> Result<BigDecimal, TaxError<String>>;
 
-    fn compute_from_str<S: Into<String>>(
+    /// returns the calculated cummulated tax value for the specified [f64] unit_value.
+    /// Using f64 values may cause some precission loss
+    /// because some decimal values only can be represented as an aproximation as floats.
+    /// Could returns [TaxError::NegativeValue]
+    fn tax_from_f64(&mut self, unit_value: f64, qty: f64) -> Result<BigDecimal, TaxError<String>>;
+
+    /// returns the calculated cummulated tax value for the specified [Into<String>] unit_value.
+    /// Could returns [TaxError::NegativeValue] [TaxError::InvalidDecimal]
+    fn tax_from_str<S: Into<String>>(
         &mut self,
         unit_value: S,
         qty: S,
-    ) -> Result<BigDecimal, TaxError>;
+    ) -> Result<BigDecimal, TaxError<String>>;
 
-    fn compute(&mut self, unit_value: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError>;
+    /// removes the calculated cummulated tax value for the specified [BigDecimal] taxed.
+    /// returning the value over the cummulated taxes were calculated.
+    /// Could returns [TaxError::NegativeValue]
+    fn un_tax(&self, taxed: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError<String>>;
 
-    fn un_tax(&self, taxed: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError>;
+    /// removes the calculated cummulated tax value for the specified [f64] taxed.
+    /// returning the value over the cummulated taxes were calculated.
+    /// Using f64 values may cause some precission loss
+    /// because some decimal values only can be represented as an aproximation as floats.
+    /// Could returns [TaxError::NegativeValue]
+    fn un_tax_from_f64(&self, taxed: f64, qty: f64) -> Result<BigDecimal, TaxError<String>>;
 
-    fn un_tax_from_f64(&self, taxed: f64, qty: f64) -> Result<BigDecimal, TaxError>;
+    /// removes the calculated cummulated tax value for the specified [Into<String>] taxed.
+    /// returning the value over the cummulated taxes were calculated.
+    /// Could returns [TaxError::NegativeValue] [TaxError::InvalidDecimal]
+    fn un_tax_from_str<S: Into<String>>(
+        &self,
+        taxed: S,
+        qty: S,
+    ) -> Result<BigDecimal, TaxError<String>>;
 
-    fn un_tax_from_str<S: Into<String>>(&self, taxed: S, qty: S) -> Result<BigDecimal, TaxError>;
+    /// returns the [BigDecimal] percentual value of the specified tax applied to the specified taxable
+    /// Could returns [TaxError::DivisionByZero]
+    fn ratio(taxed: BigDecimal, tax: BigDecimal) -> Result<BigDecimal, TaxError<String>> {
+        if taxed == crate::zero() && tax == crate::zero() {
+            return Err(TaxError::DivisionByZero(
+                "taxed and tax values are zero. couldnt divide by zero".to_string(),
+            ));
+        }
 
-    fn ratio(&self, taxed: BigDecimal, tax: BigDecimal) -> BigDecimal {
-        hundred() * &tax / (&taxed + &tax)
+        Ok(crate::hundred() * &tax / (&taxed + &tax))
     }
 
-    fn taxable(&mut self, stage: tax_stage::Stage) -> Option<BigDecimal>;
-
+    /// returns the value of the specified tax applied over the specified taxable and quantity.
+    /// Could returns [TaxError::NegativeValue]
     fn line_tax(
-        self,
+        &self,
         taxable: BigDecimal,
         qty: BigDecimal,
         value: BigDecimal,
-        mode: Type,
-    ) -> BigDecimal;
+        mode: Mode,
+    ) -> Result<BigDecimal, TaxError<String>> {
+        if taxable < crate::zero() {
+            return Err(TaxError::NegativeValue("negative taxable".to_string()));
+        }
 
+        if qty < crate::zero() {
+            return Err(TaxError::NegativeValue("negative quantity".to_string()));
+        }
+
+        match mode {
+            Mode::Percentual => Ok(&taxable * &qty * &value / crate::hundred()),
+            Mode::AmountLine => Ok(&qty * &value),
+            Mode::AmountUnit => Ok(value),
+        }
+    }
+
+    /// returns the value of the specified [Into<String>] tax applied over the specified taxable and quantity.
+    /// Could returns [TaxError::NegativeValue] [TaxError::InvalidDecimal]
     fn line_tax_from_str<S: Into<String>>(
-        self,
+        &self,
         taxable: S,
         qty: S,
         value: S,
-        mode: Type,
-    ) -> Result<BigDecimal, TaxError>;
+        mode: Mode,
+    ) -> Result<BigDecimal, TaxError<String>> {
+        let taxable = taxable.into();
+        let qty = qty.into();
+        let value = value.into();
 
+        match BigDecimal::from_str(&taxable) {
+            Ok(taxable) => match BigDecimal::from_str(&qty) {
+                Ok(qty) => match BigDecimal::from_str(&value) {
+                    Ok(value) => self.line_tax(taxable, qty, value, mode),
+                    Err(err) => Err(TaxError::InvalidDecimal(err.to_string())),
+                },
+                Err(err) => Err(TaxError::InvalidDecimal(err.to_string())),
+            },
+            Err(err) => Err(TaxError::InvalidDecimal(err.to_string())),
+        }
+    }
+
+    /// returns the value of the specified [f64] tax applied over the specified taxable and quantity.
+    /// Could returns [TaxError::NegativeValue]
     fn line_tax_from_f64(
-        self,
+        &self,
         taxable: f64,
         qty: f64,
         value: f64,
-        mode: Type,
-    ) -> Result<BigDecimal, TaxError>;
+        mode: Mode,
+    ) -> Result<BigDecimal, TaxError<String>> {
+        self.line_tax(
+            BigDecimal::from_f64(taxable).unwrap_or(crate::inverse()),
+            BigDecimal::from_f64(qty).unwrap_or(crate::inverse()),
+            BigDecimal::from_f64(value).unwrap_or(crate::inverse()),
+            mode,
+        )
+    }
 }
 
-#[derive(Clone)]
-/// Is a handler to the taxes calculation stages.
-/// It has a handler for each of the tax stages.
-///
-/// # Example
-///
-/// ```
-/// use std::str::FromStr;  
-/// use bigdecimal::BigDecimal;  
-/// use baggins::tax::TaxComputer;  
-/// use baggins::tax::Type;  
-/// use baggins::tax::tax_stage::Stage;  
-///
-///     let mut tax_calculator = baggins::tax::ComputedTax::new();
-///
-///     let err = tax_calculator.add_tax_from_f64(18.0, Stage::OverTaxable, Type::Percentual);
-///     assert!(err.is_some(), "error triggered adding first f64 tax {:?}", err);
-///
-///     let err = tax_calculator.add_tax_from_f64(10.0, Stage::OverTaxable, Type::Percentual);
-///     assert!(err.is_some(), "error triggered adding second f64 tax");
-///
-///     let err = tax_calculator.add_tax_from_f64(0.5, Stage::OverTaxable, Type::AmountUnit);
-///     assert!(err.is_some(), "error triggered adding third f64 tax");
-///
-///     let r = tax_calculator.compute_from_f64(24.576855, 4.0);
-///
-///     match r {
-///         Ok(tax) => {
-///             let expected = BigDecimal::from_str("29.52607759999999814226612215861678123474121093750000").unwrap();
-///             assert_eq!(tax, expected);
-///             println!("calculated_tax: {}", tax);
-///         }
-///
-///         Err(e) => {
-///             panic!("{e}")
-///         }
-///     }
-/// ```
-///
-pub struct ComputedTax {
-    over_taxable: tax_stage::TaxStage,
-    over_tax: tax_stage::TaxStage,
-    over_tax_ignorable: tax_stage::TaxStage,
+pub struct TaxComputer {
+    over_taxable: TaxStage,
+    over_tax: TaxStage,
+    over_tax_ignorable: TaxStage,
 }
 
-impl ComputedTax {
+impl TaxComputer {
     /// returns a ComputerTax stage handler
     ///
     /// # Examples
     ///
     /// ```
     /// use baggins::tax::TaxComputer;
-    /// let mut tax_calculator = baggins::tax::ComputedTax::new();
+    /// use baggins::tax::TaxStage;
+    ///
+    /// let mut tax_calculator = TaxComputer::new();
     /// ```
     ///
     pub fn new() -> Self {
         Self {
-            over_taxable: tax_stage::TaxStage::new(),
-            over_tax: tax_stage::TaxStage::new(),
-            over_tax_ignorable: tax_stage::TaxStage::new(),
+            over_taxable: TaxStage::default(),
+            over_tax: TaxStage::default(),
+            over_tax_ignorable: TaxStage::default(),
         }
     }
 }
 
-impl Default for ComputedTax {
+impl Default for TaxComputer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl TaxComputer for ComputedTax {
-    fn taxable(&mut self, stage: tax_stage::Stage) -> Option<BigDecimal> {
-        match stage {
-            tax_stage::Stage::OverTaxable => return self.over_taxables().taxable(),
-            tax_stage::Stage::OverTax => return self.over_taxes().taxable(),
-            tax_stage::Stage::OverTaxIgnorable => return self.over_tax_ignorables().taxable(),
-        }
-    }
-
+impl Taxer for TaxComputer {
     fn over_taxables(&self) -> impl Stager {
-        self.over_tax.clone()
+        self.over_taxable.clone()
     }
 
     fn over_taxes(&self) -> impl Stager {
@@ -679,271 +677,258 @@ impl TaxComputer for ComputedTax {
         self.over_tax_ignorable.clone()
     }
 
+    fn add_tax(&mut self, tax: BigDecimal, stage: Stage, mode: Mode) -> Option<TaxError<String>> {
+        match stage {
+            Stage::OverTaxable => match mode {
+                Mode::Percentual => self.over_taxable.add_percentual(tax),
+                Mode::AmountLine => self.over_taxable.add_amount_by_line(tax),
+                Mode::AmountUnit => self.over_taxable.add_amount_by_qty(tax),
+            },
+            Stage::OverTax => match mode {
+                Mode::Percentual => self.over_tax.add_percentual(tax),
+                Mode::AmountLine => self.over_tax.add_amount_by_line(tax),
+                Mode::AmountUnit => self.over_tax.add_amount_by_qty(tax),
+            },
+            Stage::OverTaxIgnorable => match mode {
+                Mode::Percentual => self.over_tax_ignorable.add_percentual(tax),
+                Mode::AmountLine => self.over_tax_ignorable.add_amount_by_line(tax),
+                Mode::AmountUnit => self.over_tax_ignorable.add_amount_by_qty(tax),
+            },
+        }
+    }
+
     fn add_tax_from_f64(
         &mut self,
         tax: f64,
-        stage: tax_stage::Stage,
-        tax_type: Type,
-    ) -> Option<TaxError> {
-        match stage {
-            tax_stage::Stage::OverTaxable => match tax_type {
-                Type::Percentual => {
-                    self.over_taxable.add_percentual_from_f64(tax);
-                }
-
-                Type::AmountLine => {
-                    self.over_taxable.add_amount_by_line_from_f64(tax);
-                }
-
-                Type::AmountUnit => {
-                    self.over_taxable.add_amount_by_qty_from_f64(tax);
-                }
-            },
-
-            tax_stage::Stage::OverTax => match tax_type {
-                Type::Percentual => {
-                    self.over_tax.add_percentual_from_f64(tax);
-                }
-
-                Type::AmountLine => {
-                    self.over_tax.add_amount_by_line_from_f64(tax);
-                }
-
-                Type::AmountUnit => {
-                    self.over_tax.add_amount_by_qty_from_f64(tax);
-                }
-            },
-
-            tax_stage::Stage::OverTaxIgnorable => match tax_type {
-                Type::Percentual => {
-                    self.over_tax_ignorable.add_percentual_from_f64(tax);
-                }
-
-                Type::AmountLine => {
-                    self.over_tax_ignorable.add_amount_by_line_from_f64(tax);
-                }
-
-                Type::AmountUnit => {
-                    self.over_tax_ignorable.add_amount_by_qty_from_f64(tax);
-                }
-            },
-        }
-
-        Some(TaxError::InvalidTaxStage)
+        stage: Stage,
+        tax_type: Mode,
+    ) -> Option<TaxError<String>> {
+        self.add_tax(
+            BigDecimal::from_f64(tax).unwrap_or(crate::inverse()),
+            stage,
+            tax_type,
+        )
     }
 
     fn add_tax_from_str<S: Into<String>>(
         &mut self,
         tax: S,
-        stage: tax_stage::Stage,
-        tax_type: Type,
-    ) -> Option<TaxError> {
-        let opt_tx = BigDecimal::from_str(tax.into().as_str());
+        stage: Stage,
+        tax_type: Mode,
+    ) -> Option<TaxError<String>> {
+        let tax = tax.into();
 
-        match opt_tx {
-            Ok(tx) => self.add_tax(tx, stage, tax_type),
-            Err(e) => Some(TaxError::InvalidDecimal(format!("{e}"))),
+        match BigDecimal::from_str(&tax) {
+            Ok(tax) => self.add_tax(tax, stage, tax_type),
+            Err(err) => Some(TaxError::InvalidDecimal(err.to_string())),
         }
     }
 
-    fn add_tax(
+    fn tax(
         &mut self,
-        tax: BigDecimal,
-        stage: tax_stage::Stage,
-        tax_type: Type,
-    ) -> Option<TaxError> {
-        match stage {
-            tax_stage::Stage::OverTaxable => match tax_type {
-                Type::Percentual => self.over_taxable.add_percentual(tax),
+        unit_value: BigDecimal,
+        qty: BigDecimal,
+    ) -> Result<BigDecimal, TaxError<String>> {
+        // if unit_value < crate::zero() {
+        //     return Err(TaxError::NegativeValue(format!("unit_value {}", unit_value)))
+        // }
 
-                Type::AmountLine => self.over_taxable.add_amount_by_line(tax),
+        // if qty < crate::zero() {
+        //     return Err(TaxError::NegativeValue(format!("quantity {}", qty)))
+        // }
 
-                Type::AmountUnit => self.over_taxable.add_amount_by_qty(tax),
+        // let net = &unit_value * &qty;
+        match self.over_taxable.tax(unit_value.clone(), qty.clone()) {
+            Ok(tax_over_taxable) => match self
+                .over_tax
+                .tax(&tax_over_taxable + &unit_value, qty.clone())
+            {
+                Ok(over_tax) => {
+                    match self.over_tax_ignorable.tax(unit_value.clone(), qty.clone()) {
+                        Ok(over_tax_ignorable) => {
+                            Ok(&tax_over_taxable + &over_tax + &over_tax_ignorable)
+                        }
+                        Err(err) => Err(err),
+                    }
+                }
+                Err(err) => Err(err),
             },
-
-            tax_stage::Stage::OverTax => match tax_type {
-                Type::Percentual => self.over_tax.add_percentual(tax),
-
-                Type::AmountLine => self.over_tax.add_amount_by_line(tax),
-
-                Type::AmountUnit => self.over_tax.add_amount_by_qty(tax),
-            },
-
-            tax_stage::Stage::OverTaxIgnorable => match tax_type {
-                Type::Percentual => self.over_tax_ignorable.add_percentual(tax),
-
-                Type::AmountLine => self.over_tax_ignorable.add_amount_by_line(tax),
-
-                Type::AmountUnit => self.over_tax_ignorable.add_amount_by_qty(tax),
-            },
+            Err(err) => Err(err),
         }
     }
 
-    fn compute(&mut self, unit_value: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError> {
-        let over_taxable = self.over_taxable.tax(unit_value.clone(), qty.clone())?;
-        let over_tax = self.over_tax.tax(unit_value.clone(), qty.clone())?;
-        let over_tax_ignorable = self
-            .over_tax_ignorable
-            .tax(unit_value.clone(), qty.clone())?;
-
-        Ok(over_taxable + over_tax + over_tax_ignorable)
+    fn tax_from_f64(&mut self, unit_value: f64, qty: f64) -> Result<BigDecimal, TaxError<String>> {
+        self.tax(
+            BigDecimal::from_f64(unit_value).unwrap_or(crate::inverse()),
+            BigDecimal::from_f64(qty).unwrap_or(crate::inverse()),
+        )
     }
 
-    fn compute_from_f64(&mut self, unit_value: f64, qty: f64) -> Result<BigDecimal, TaxError> {
-        let over_taxable = self.over_taxable.tax_from_f64(unit_value, qty)?;
-        let over_tax = self.over_tax.tax_from_f64(unit_value, qty)?;
-        let over_tax_ignorable = self.over_tax_ignorable.tax_from_f64(unit_value, qty)?;
-
-        Ok(over_taxable + over_tax + over_tax_ignorable)
-    }
-
-    fn compute_from_str<S: Into<String>>(
+    fn tax_from_str<S: Into<String>>(
         &mut self,
         unit_value: S,
         qty: S,
-    ) -> Result<BigDecimal, TaxError> {
-        let opt_uv = BigDecimal::from_str(unit_value.into().as_str());
+    ) -> Result<BigDecimal, TaxError<String>> {
+        let unit_value = unit_value.into();
+        let qty = qty.into();
 
-        match opt_uv {
-            Ok(uv) => {
-                let opt_qty = BigDecimal::from_str(qty.into().as_str());
-
-                match opt_qty {
-                    Ok(q) => self.compute(uv, q),
-                    Err(e) => Err(TaxError::InvalidDecimal(format!("invalid qty {e}"))),
-                }
-            }
-            Err(e) => Err(TaxError::InvalidDecimal(format!(
-                " invalid unit value: {e}"
+        match BigDecimal::from_str(&unit_value) {
+            Ok(unit_value) => match BigDecimal::from_str(&qty) {
+                Ok(qty) => self.tax(unit_value, qty),
+                Err(err) => Err(TaxError::InvalidDecimal(format!(
+                    " qty {} err {}",
+                    qty, err
+                ))),
+            },
+            Err(err) => Err(TaxError::InvalidDecimal(format!(
+                " unit_value {}  err {}",
+                unit_value, err
             ))),
         }
     }
 
-    fn un_tax(&self, taxed: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError> {
-        let taxable_over_tax_ignorable = self.over_tax_ignorable.un_tax(taxed, qty.clone())?;
-        let taxable_over_tax = self
-            .over_tax
-            .un_tax(taxable_over_tax_ignorable, qty.clone())?;
-        let original_taxable = self.over_taxable.un_tax(taxable_over_tax, qty.clone())?;
-
-        Ok(original_taxable)
-    }
-
-    fn un_tax_from_f64(&self, taxed: f64, qty: f64) -> Result<BigDecimal, TaxError> {
-        let taxable_over_tax_ignorable = self
-            .over_tax_ignorable
-            .un_tax_from_f64(taxed, qty)?
-            .to_f64()
-            .unwrap();
-        let taxable_over_tax = self
-            .over_tax
-            .un_tax_from_f64(taxable_over_tax_ignorable, qty)?
-            .to_f64()
-            .unwrap();
-        let original_taxable = self.over_taxable.un_tax_from_f64(taxable_over_tax, qty)?;
-
-        Ok(original_taxable)
-    }
-
-    fn un_tax_from_str<S: Into<String>>(&self, taxed: S, qty: S) -> Result<BigDecimal, TaxError> {
-        let opt_taxed = BigDecimal::from_str(taxed.into().as_str());
-
-        match opt_taxed {
-            Ok(txd) => {
-                let opt_qty = BigDecimal::from_str(qty.into().as_str());
-
-                match opt_qty {
-                    Ok(q) => self.un_tax(txd, q),
-                    Err(e) => Err(TaxError::InvalidDecimal(format!(
-                        "invalid qty in un_tax_from_str {e}"
-                    ))),
-                }
-            }
-            Err(e) => Err(TaxError::InvalidDecimal(format!(
-                " invalid taxed value in un_tax_from_str: {e}"
-            ))),
+    /// removes the calculated cummulated tax value for the specified [BigDecimal] taxed.
+    /// returning the [BigDecimal] value over the cummulated taxes were calculated.
+    /// Could returns [TaxError::NegativeValue]
+    ///
+    /// This implementation uses the next equation to un tax the taxed value
+    ///
+    /// taxed – b * d + b + e + h - c * (d + 1) - f - i  /  a * d + a + g + d + 1
+    ///
+    /// Where
+    ///
+    /// a = over_taxable.percentuals / 100
+    ///
+    /// b = over_taxable.amount_by_qty() * qty
+    ///
+    /// c = over_taxable.amount_line
+    ///
+    ///
+    /// d = over_tax.percentuals / 100
+    ///
+    /// e = over_tax.amount_by_qty() * qty
+    ///
+    /// f = over_tax.amount_line
+    ///
+    ///
+    /// g = over_tax_ignorable.percentuals / 100
+    ///
+    /// h = over_tax_ignorable.amount_by_qty() * qty
+    ///
+    /// i = over_tax_ignorable.amount_line
+    ///
+    ///
+    fn un_tax(&self, taxed: BigDecimal, qty: BigDecimal) -> Result<BigDecimal, TaxError<String>> {
+        if qty < crate::zero() {
+            return Err(TaxError::NegativeValue(format!("qty {}", qty)));
         }
+
+        let a = &self.over_taxable.percentuals / crate::hundred();
+        let b = &self.over_taxable.amount_by_qty() * &qty;
+        let c = &self.over_taxable.amount_line;
+        let d = &self.over_tax.percentuals / crate::hundred();
+        let e = &self.over_tax.amount_by_qty() * &qty;
+        let f = &self.over_tax.amount_line;
+        let g = &self.over_tax_ignorable.percentuals / crate::hundred();
+        let h = &self.over_tax_ignorable.amount_by_qty() * &qty;
+        let i = &self.over_tax_ignorable.amount_line;
+
+        let numerator = &taxed - &b * &d + b + e + h - c * (&d + crate::one()) - f - i;
+        let denominator = &a + &d + &a + &g + &d + crate::one();
+
+        Ok(numerator / denominator)
     }
 
-    fn line_tax(
-        self,
-        taxable: BigDecimal,
-        qty: BigDecimal,
-        value: BigDecimal,
-        mode: Type,
-    ) -> BigDecimal {
-        match mode {
-            Type::Percentual => taxable * value / 100,
-            Type::AmountLine => value.clone(),
-            Type::AmountUnit => value * qty,
-        }
+    /// removes the calculated cummulated tax value for the specified [f64] taxed.
+    /// returning the [BigDecimal] value over the cummulated taxes were calculated.
+    /// Using f64 may cause some precission loss
+    /// Could returns [TaxError::NegativeValue]
+    ///
+    /// This implementation uses the next equation to un tax the taxed value
+    ///
+    /// taxed – b * d + b + e + h - c * (d + 1) - f - i  /  a * d + a + g + d + 1
+    ///
+    /// Where
+    ///
+    /// a = over_taxable.percentuals / 100
+    ///
+    /// b = over_taxable.amount_by_qty() * qty
+    ///
+    /// c = over_taxable.amount_line
+    ///
+    ///
+    /// d = over_tax.percentuals / 100
+    ///
+    /// e = over_tax.amount_by_qty() * qty
+    ///
+    /// f = over_tax.amount_line
+    ///
+    ///
+    /// g = over_tax_ignorable.percentuals / 100
+    ///
+    /// h = over_tax_ignorable.amount_by_qty() * qty
+    ///
+    /// i = over_tax_ignorable.amount_line
+    ///
+    ///
+    fn un_tax_from_f64(&self, taxed: f64, qty: f64) -> Result<BigDecimal, TaxError<String>> {
+        self.un_tax(
+            BigDecimal::from_f64(taxed).unwrap_or(crate::inverse()),
+            BigDecimal::from_f64(qty).unwrap_or(crate::inverse()),
+        )
     }
 
-    fn line_tax_from_str<S: Into<String>>(
-        self,
-        taxable: S,
+    /// removes the calculated cummulated tax value for the specified [Into<String>] taxed.
+    /// returning the [BigDecimal] value over the cummulated taxes were calculated.
+    /// Could returns [TaxError::NegativeValue] [TaxError::InvalidDecimal]
+    ///
+    /// This implementation uses the next equation to un tax the taxed value
+    ///
+    /// taxed – b * d + b + e + h - c * (d + 1) - f - i  /  a * d + a + g + d + 1
+    ///
+    /// Where
+    ///
+    /// a = over_taxable.percentuals / 100
+    ///
+    /// b = over_taxable.amount_by_qty() * qty
+    ///
+    /// c = over_taxable.amount_line
+    ///
+    ///
+    /// d = over_tax.percentuals / 100
+    ///
+    /// e = over_tax.amount_by_qty() * qty
+    ///
+    /// f = over_tax.amount_line
+    ///
+    ///
+    /// g = over_tax_ignorable.percentuals / 100
+    ///
+    /// h = over_tax_ignorable.amount_by_qty() * qty
+    ///
+    /// i = over_tax_ignorable.amount_line
+    ///
+    ///
+    fn un_tax_from_str<S: Into<String>>(
+        &self,
+        taxed: S,
         qty: S,
-        value: S,
-        mode: Type,
-    ) -> Result<BigDecimal, TaxError> {
-        let string_tx = taxable.into();
-        let txbl = BigDecimal::from_str(string_tx.as_str()).unwrap_or(inverse());
+    ) -> Result<BigDecimal, TaxError<String>> {
+        let taxed = taxed.into();
+        let qty = qty.into();
 
-        if txbl == inverse() {
-            return Err(TaxError::InvalidDecimal(format!(
-                "taxable {:?}",
-                &string_tx
-            )));
+        match BigDecimal::from_str(&taxed) {
+            Ok(taxed) => match BigDecimal::from_str(&qty) {
+                Ok(qty) => self.un_tax(taxed, qty),
+                Err(err) => Err(TaxError::InvalidDecimal(format!(
+                    "invalid taxed {} err  {}",
+                    taxed, err
+                ))),
+            },
+            Err(err) => Err(TaxError::InvalidDecimal(format!(
+                "invalid taxed {} err  {}",
+                taxed, err
+            ))),
         }
-
-        let string_qt = qty.into();
-        let qt = BigDecimal::from_str(string_qt.as_str()).unwrap_or(inverse());
-
-        if qt == inverse() {
-            return Err(TaxError::InvalidDecimal(format!("qty {:?}", &string_qt)));
-        }
-
-        let string_v = value.into();
-        let v = BigDecimal::from_str(string_v.as_str()).unwrap_or(inverse());
-
-        if v == inverse() {
-            return Err(TaxError::InvalidDecimal(format!("value {:?}", &string_v)));
-        }
-
-        Ok(self.line_tax(txbl, qt, v, mode))
-    }
-
-    fn line_tax_from_f64(
-        self,
-        taxable: f64,
-        qty: f64,
-        value: f64,
-        mode: Type,
-    ) -> Result<BigDecimal, TaxError> {
-        let txbl = BigDecimal::from_f64(taxable).unwrap_or(inverse());
-
-        if txbl == inverse() {
-            return Err(TaxError::InvalidDecimal(format!(
-                "taxable from f64 {:?}",
-                taxable
-            )));
-        }
-
-        let qt = BigDecimal::from_f64(qty).unwrap_or(inverse());
-
-        if qt == inverse() {
-            return Err(TaxError::InvalidDecimal(format!("qty fro f64 {:?}", qty)));
-        }
-
-        let v = BigDecimal::from_f64(value).unwrap_or(inverse());
-
-        if v == inverse() {
-            return Err(TaxError::InvalidDecimal(format!(
-                "value from f64 {:?}",
-                value
-            )));
-        }
-
-        Ok(self.line_tax(txbl, qt, v, mode))
     }
 }

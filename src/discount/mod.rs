@@ -1,12 +1,17 @@
+//! discount
+//!
+//! `discount` module provides ways to calculate discounts.
+//!
 use std::{fmt, str::FromStr};
 
-use bigdecimal::{BigDecimal, FromPrimitive, Zero};
+use bigdecimal::{BigDecimal, FromPrimitive};
 
 use crate::hundred;
 
-// Different types of discounts are represented here
-pub enum Type {
-    /// It's a discount applied as a tasa over a value as when someone says *a discount of 10%*
+// Different types of discounts are represented here we use the mode identificator to identify them
+#[derive(PartialEq)]
+pub enum Mode {
+    /// It's a discount applied as a percentage over a value as when someone says *a discount of 10%*
     Percentual,
 
     /// It's a discount applied as an amount over the entirety of the line without consider quantity, as when someone says *a discount of $10 over the total $100*
@@ -16,17 +21,17 @@ pub enum Type {
     AmountUnit,
 }
 
-impl fmt::Display for Type {
+impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Type::Percentual => write!(f, "Percentual"),
-            Type::AmountLine => write!(f, "AmountLine"),
-            Type::AmountUnit => write!(f, "AmountUnit"),
+            Mode::Percentual => write!(f, "Percentual"),
+            Mode::AmountLine => write!(f, "AmountLine"),
+            Mode::AmountUnit => write!(f, "AmountUnit"),
         }
     }
 }
 
-impl Type {
+impl Mode {
     pub fn from_i8(r#type: i8) -> Option<Self> {
         if r#type == 0 {
             return Some(Self::Percentual);
@@ -45,82 +50,135 @@ impl Type {
 }
 
 #[derive(Debug)]
-pub enum DiscountError {
-    NegativeDiscountable(String),
-    NegativeDiscount(String),
-    NegativePercent(f64),
-    NegativeAmountByUnit(f64),
-    NegativeAmountByLine(f64),
-    NegativeQuantity(String),
-    OverMaxDiscount(String),
-    InvalidDecimal(String),
-    InvalidDiscountStage,
+/// Possible errors of the discount processing
+pub enum DiscountError<S: Into<String>> {
+    /// a negative value is not allowed, How do you discount 10% of -10?, or the -10% of 10
+    NegativeValue(S),
 
-    Other,
+    /// discounts beyond a maximum value is not allowed
+    OverMaxDiscount(S),
+
+    /// we work with [BigDecimal] values. Values which cannot be converted will trigger this error
+    InvalidDecimal(S),
+
+    /// a discount should be among the allowed modes
+    InvalidDiscountMode(S),
+
+    /// something was wrong
+    Other(S),
 }
 
-impl fmt::Display for DiscountError {
+impl<S: Into<String> + Clone> fmt::Display for DiscountError<S> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            DiscountError::NegativeDiscountable(ref discountable) => write!(
+        match self {
+            DiscountError::NegativeValue(info) => write!(
                 f,
-                "Negative discountable Error: {discountable} discountable cannot be negative"
+                "Negative value Error. <discountable>, <discount> and <quantity> cannot be negative. {}",
+                info.clone().into(),
             ),
-            DiscountError::NegativeDiscount(ref discount) => write!(
-                f,
-                "Negative discount Error: {discount} discountable cannot be negative"
-            ),
-            DiscountError::NegativePercent(ref value) => {
-                write!(f, "Negative percentual discount value Error: {value}")
-            }
-            DiscountError::NegativeAmountByUnit(ref value) => {
-                write!(f, "Negative amount by unit discount value Error: {value}")
-            }
-            DiscountError::NegativeAmountByLine(ref value) => {
-                write!(f, "Negative amount by line discount value Error: {value}")
-            }
-            DiscountError::NegativeQuantity(ref msg) => write!(f, "{msg}"),
-            DiscountError::OverMaxDiscount(ref msg) => write!(f, "Over max discount {msg}"),
-            DiscountError::InvalidDecimal(ref value) => write!(f, "Invalid decimal value {value}"),
-            DiscountError::InvalidDiscountStage => write!(f, "Invalid discount Stage value"),
-            DiscountError::Other => write!(f, "Unknown error!"),
+            DiscountError::OverMaxDiscount(info) => write!(f, "Over max discount error. {}", info.clone().into()),
+            DiscountError::InvalidDecimal(info) => write!(f, "Invalid decimal value error {}", info.clone().into()),
+            DiscountError::InvalidDiscountMode(info) => write!(f, "Invalid discount Stage value. {}", info.clone().into()),
+            DiscountError::Other(info) => write!(f, "Unknown error! {}", info.clone().into()),
         }
     }
 }
 
 /// Represents a thing able to calculates discounts
-pub trait DiscountComputer {
+pub trait Discounter {
+    /// adds a f64 value as a discount of the specified mode. Using f64 values may cause some precission loss
+    /// because some decimal values only can be represented as an aproximation as floats.
+    /// Can return [DiscountError::OverMaxDiscount] [DiscountError::NegativeValue] wrapped in [Option]
     fn add_discount_from_f64(
         &mut self,
         discount: f64,
-        discount_type: Type,
-    ) -> Option<DiscountError>;
+        discount_mode: Mode,
+    ) -> Option<DiscountError<String>>;
+
+    /// adds a string value as a discount of the specified mode. Using string values may cause some speed loss
+    /// because they have to be converted.
+    /// If the value cannot be converted a [DiscountError::InvalidDecimal] will be returned wrapped in [Option].
+    /// Can also return [DiscountError::OverMaxDiscount] [DiscountError::NegativeValue] wrapped in [Option]
     fn add_discount_from_str<S: Into<String>>(
         &mut self,
         discount: S,
-        discount_type: Type,
-    ) -> Option<DiscountError>;
-    fn add_discount(&mut self, discount: BigDecimal, discount_type: Type) -> Option<DiscountError>;
-    fn compute_from_f64(&self, unit_value: f64, qty: f64) -> Result<BigDecimal, DiscountError>;
-    fn compute(&self, unit_value: BigDecimal, qty: BigDecimal)
-        -> Result<BigDecimal, DiscountError>;
+        discount_mode: Mode,
+    ) -> Option<DiscountError<String>>;
+
+    /// adds a [BigDecimal] value as a discount of the specified mode.
+    fn add_discount(
+        &mut self,
+        discount: BigDecimal,
+        discount_mode: Mode,
+    ) -> Option<DiscountError<String>>;
+
+    /// Computes the value of the registered discounts applied a [f64] discountable value and a [f64] quantity.
+    /// When successful returns a tuple containing the cummulated value of the discount, and the cummulated percentual
+    /// discount.
+    /// Using f64 values may cause some precission loss because some decimal values only can be represented as an aproximation as floats
+    /// Can return [DiscountError::NegativeValue] [DiscountError::OverMaxDiscount]
+    fn compute_from_f64(
+        &self,
+        unit_value: f64,
+        qty: f64,
+        max_discount_allowed: Option<f64>,
+    ) -> Result<(BigDecimal, BigDecimal), DiscountError<String>>;
+
+    /// computes the value of the registered discounts applied a [BigDecimal] discountable value and a [Bigdecimal] quantity.
+    /// validating the value of the discount is not over max_discount_allowed if any
+    /// When successful returns a tuple containing the cummulated value of the discount, and the cummulated percentual
+    /// discount.
+    /// Can return [DiscountError::NegativeValue] [DiscountError::OverMaxDiscount]
+    fn compute(
+        &self,
+        unit_value: BigDecimal,
+        qty: BigDecimal,
+        max_discount_allowed: Option<BigDecimal>,
+    ) -> Result<(BigDecimal, BigDecimal), DiscountError<String>>;
+
+    /// computes the value of the registered discounts applied a [Into<String>] discountable value and a [Into<String>] quantity.
+    /// When successful returns a tuple containing the cummulated value of the discount, and the cummulated percentual
+    /// discount.
+    /// Can return [DiscountError::NegativeValue] [DiscountError::OverMaxDiscount]
     fn compute_from_str<S: Into<String>>(
         &self,
         unit_value: S,
         qty: S,
-    ) -> Result<BigDecimal, DiscountError>;
+        max_discount_allowed: Option<S>,
+    ) -> Result<(BigDecimal, BigDecimal), DiscountError<String>>;
+
+    /// Removes the registered discounts over the discounted value received.
+    /// When successful returns a tuple of [BigDecimal] with the undiscounted value, the removed discount value,
+    /// and the percentual discount removed.
+    /// Can return [DiscountError::NegativeValue]
     fn un_discount(
         &self,
         discounted: BigDecimal,
         qty: BigDecimal,
-    ) -> Result<BigDecimal, DiscountError>;
-    fn un_discount_from_f64(&self, discounted: f64, qty: f64) -> Result<BigDecimal, DiscountError>;
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal), DiscountError<String>>;
+
+    /// Removes the registered discounts over the discounted [f64] value received.
+    /// When using f64 some precission loss can be expected.
+    /// When successful returns a tuple of [BigDecimal] with the undiscounted value, the removed discount value,
+    /// and the percentual discount removed.
+    /// Can return [DiscountError::NegativeValue]
+    fn un_discount_from_f64(
+        &self,
+        discounted: f64,
+        qty: f64,
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal), DiscountError<String>>;
+
+    /// Removes the registered discounts over the discounted [Into<String>] value received.
+    /// When successful returns a tuple of [BigDecimal] with the undiscounted value, the removed discount value,
+    /// and the percentual discount removed.
+    /// Can return [DiscountError::NegativeValue]
     fn un_discount_from_str<S: Into<String>>(
         &self,
         discounted: S,
         qty: S,
-    ) -> Result<BigDecimal, DiscountError>;
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal), DiscountError<String>>;
 
+    /// returns the percentual value of an applied discount over a discounted value
     fn ratio(&self, discounted: BigDecimal, discount: BigDecimal) -> BigDecimal {
         hundred() * &discount / (&discounted + &discount)
     }
@@ -133,12 +191,12 @@ pub trait DiscountComputer {
 /// ```
 /// use std::str::FromStr;
 /// use bigdecimal::BigDecimal;
-/// use baggins::discount::{ComputedDiscount, DiscountComputer, Type};
+/// use baggins::discount::{Discounter, DiscountComputer, Mode};
 ///
 /// fn main() {
-///     let mut d = ComputedDiscount::new();
+///     let mut d = DiscountComputer::new();
 ///
-///     let err = d.add_discount(BigDecimal::from_str("10.2").unwrap(), Type::Percentual);
+///     let err = d.add_discount(BigDecimal::from_str("10.2").unwrap(), Mode::Percentual);
 ///     match err {
 ///         Some(e) => {
 ///             panic!("{e}")
@@ -146,7 +204,7 @@ pub trait DiscountComputer {
 ///         None => {},
 ///     }
 ///
-///     let err = d.add_discount_from_str("10.56", Type::AmountUnit);
+///     let err = d.add_discount_from_str("10.56", Mode::AmountUnit);
 ///     match err {
 ///         Some(e) => {
 ///             panic!("{e}")
@@ -154,7 +212,7 @@ pub trait DiscountComputer {
 ///         None => {},
 ///     }
 ///
-///     let err = d.add_discount(BigDecimal::from_str("1.5").unwrap(), Type::AmountLine);
+///     let err = d.add_discount(BigDecimal::from_str("1.5").unwrap(), Mode::AmountLine);
 ///     match err {
 ///         Some(e) => {
 ///             panic!("{e}")
@@ -162,14 +220,14 @@ pub trait DiscountComputer {
 ///         None => {},
 ///     }
 ///
-///     let res = d.compute_from_f64(100.0, 1.0);
+///     let res = d.compute_from_f64(100.0, 1.0, Some(100.0f64));
 ///     
 ///     match res {
 ///         Ok(disc) => {
 ///             let expected = BigDecimal::from_str("22.26").unwrap();
 ///             
-///             if disc != expected {
-///                 panic!("expected {}. Got {}", expected, disc);
+///             if disc.0 != expected {
+///                 panic!("expected {:?}. Got {:?}", expected, disc);
 ///             }
 ///         },
 ///         Err(e) => {
@@ -179,210 +237,203 @@ pub trait DiscountComputer {
 /// }
 ///```
 ///
-pub struct ComputedDiscount {
+pub struct DiscountComputer {
     percentual: BigDecimal,
     amount_line: BigDecimal,
     amount_unit: BigDecimal,
-    max_discount: BigDecimal,
 }
 
-impl ComputedDiscount {
+impl DiscountComputer {
     pub fn new() -> Self {
         Self {
-            percentual: BigDecimal::zero(),
-            amount_line: BigDecimal::zero(),
-            amount_unit: BigDecimal::zero(),
-            max_discount: BigDecimal::zero(),
+            percentual: crate::zero(),
+            amount_line: crate::zero(),
+            amount_unit: crate::zero(),
         }
     }
 }
 
-impl Default for ComputedDiscount {
+impl Default for DiscountComputer {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DiscountComputer for ComputedDiscount {
-    fn add_discount_from_str<S: Into<String>>(
-        &mut self,
-        discount: S,
-        discount_type: Type,
-    ) -> Option<DiscountError> {
-        let opt_d = BigDecimal::from_str(discount.into().as_str());
-
-        match opt_d {
-            Ok(d) => self.add_discount(d, discount_type),
-            Err(e) => Some(DiscountError::InvalidDecimal(format!("{e}"))),
-        }
-    }
-
+impl Discounter for DiscountComputer {
     fn add_discount_from_f64(
         &mut self,
         discount: f64,
-        discount_type: Type,
-    ) -> Option<DiscountError> {
-        let opt_d = BigDecimal::from_f64(discount);
-
-        match opt_d {
-            Some(d) => {
-                if discount < 0.0 {
-                    return Some(DiscountError::NegativeDiscount(format!(
-                        "negative discount {discount} of type {}",
-                        discount_type
-                    )));
-                }
-
-                match discount_type {
-                    Type::Percentual => {
-                        self.percentual = &self.percentual + d;
-                    }
-
-                    Type::AmountUnit => {
-                        self.amount_unit = &self.amount_unit + d;
-                    }
-
-                    Type::AmountLine => {
-                        self.amount_line = &self.amount_line + d;
-                    }
-                }
-
-                None
-            }
-
-            None => Some(DiscountError::InvalidDecimal(format!(
-                "invalid decimal value for make a discount {discount}"
-            ))),
-        }
-    }
-
-    fn add_discount(&mut self, discount: BigDecimal, discount_type: Type) -> Option<DiscountError> {
-        if discount < BigDecimal::zero() {
-            return Some(DiscountError::NegativeDiscount(format!(
-                "negative discount {discount} of type {}",
-                discount_type
+        discount_mode: Mode,
+    ) -> Option<DiscountError<String>> {
+        if discount < 0.0f64 {
+            return Some(DiscountError::NegativeValue(format!(
+                "negative discount {discount}"
             )));
         }
 
-        match discount_type {
-            Type::Percentual => {
-                self.percentual = &self.percentual + discount;
+        if discount > 100.0f64 && discount_mode == Mode::Percentual {
+            return Some(DiscountError::OverMaxDiscount(format!(
+                "percentual discount over 100%. {discount}"
+            )));
+        }
+
+        match discount_mode {
+            Mode::Percentual => {
+                self.percentual =
+                    &self.percentual + BigDecimal::from_f64(discount).unwrap_or(crate::zero())
             }
-            Type::AmountLine => {
-                self.amount_line = &self.amount_line + discount;
+            Mode::AmountLine => {
+                self.amount_line =
+                    &self.amount_line + BigDecimal::from_f64(discount).unwrap_or(crate::zero())
             }
-            Type::AmountUnit => {
-                self.amount_unit = &self.amount_unit + discount;
+            Mode::AmountUnit => {
+                self.amount_unit =
+                    &self.amount_unit + BigDecimal::from_f64(discount).unwrap_or(crate::zero())
             }
         }
 
         None
     }
 
-    fn compute_from_f64(&self, unit_value: f64, qty: f64) -> Result<BigDecimal, DiscountError> {
-        if unit_value < 0.0 {
-            return Err(DiscountError::NegativeDiscountable(format!(
-                "negative discountable unit_value {}",
-                unit_value
+    fn add_discount_from_str<S: Into<String>>(
+        &mut self,
+        discount: S,
+        discount_mode: Mode,
+    ) -> Option<DiscountError<String>> {
+        let d = discount.into();
+        match BigDecimal::from_str(&d) {
+            Ok(discount) => self.add_discount(discount.clone(), discount_mode),
+            Err(err) => Some(DiscountError::InvalidDecimal(format!(
+                "discount {}  err {}",
+                d, err
+            ))),
+        }
+    }
+
+    fn add_discount(
+        &mut self,
+        discount: BigDecimal,
+        discount_mode: Mode,
+    ) -> Option<DiscountError<String>> {
+        if discount < crate::zero() {
+            return Some(DiscountError::NegativeValue(format!(
+                "negative discount {}",
+                discount
             )));
         }
 
-        if qty < 0.0 {
-            return Err(DiscountError::NegativeQuantity(format!(
-                "negative quantity: {qty}"
+        if discount > crate::hundred() && discount_mode == Mode::Percentual {
+            return Some(DiscountError::OverMaxDiscount(format!(
+                "percentual discount over 100%. {}",
+                discount
             )));
         }
 
-        let uv = BigDecimal::from_f64(unit_value).unwrap();
-        let q = BigDecimal::from_f64(qty).unwrap();
-
-        let mut mx_disc = self.max_discount.clone();
-
-        if mx_disc <= BigDecimal::zero() {
-            mx_disc = hundred().clone()
+        match discount_mode {
+            Mode::Percentual => self.percentual = &self.percentual + discount,
+            Mode::AmountLine => self.amount_line = &self.amount_line + discount,
+            Mode::AmountUnit => self.amount_unit = &self.amount_unit + discount,
         }
 
-        let max_discount_value = &uv * &mx_disc / hundred();
-        let discounted =
-            (&uv * &self.percentual / hundred() + &self.amount_unit) * &q + &self.amount_line;
+        None
+    }
 
-        if discounted < BigDecimal::zero() {
-            return Err(DiscountError::NegativeDiscount(format!(
-                " calculated discount was negative {}",
-                discounted
-            )));
-        }
+    fn compute_from_f64(
+        &self,
+        unit_value: f64,
+        qty: f64,
+        max_discount_allowed: Option<f64>,
+    ) -> Result<(BigDecimal, BigDecimal), DiscountError<String>> {
+        let unit_value = BigDecimal::from_f64(unit_value).unwrap_or(crate::inverse());
+        let qty = BigDecimal::from_f64(qty).unwrap_or(crate::inverse());
 
-        if discounted > max_discount_value {
-            return Err(DiscountError::OverMaxDiscount(format!(
-                "[maxdisocuntpercent:{}] [maxdiscount:{}] [calculated discount:{}]",
-                mx_disc, max_discount_value, discounted
-            )));
-        }
+        let max_discount_allowed = BigDecimal::from_f64(max_discount_allowed.unwrap_or(100.0f64))
+            .unwrap_or(crate::inverse());
 
-        Ok(discounted)
+        self.compute(unit_value, qty, Some(max_discount_allowed))
     }
 
     fn compute(
         &self,
         unit_value: BigDecimal,
         qty: BigDecimal,
-    ) -> Result<BigDecimal, DiscountError> {
-        if unit_value < BigDecimal::zero() {
-            return Err(DiscountError::NegativeDiscountable(format!(
-                "negative discountable unit_value {}",
+        max_discount_allowed: Option<BigDecimal>,
+    ) -> Result<(BigDecimal, BigDecimal), DiscountError<String>> {
+        let max_discount_allowed = max_discount_allowed.unwrap_or(crate::hundred());
+
+        if max_discount_allowed < crate::zero() {
+            return Err(DiscountError::NegativeValue(format!(
+                "negative <max_discount_allowed> {}",
+                max_discount_allowed
+            )));
+        }
+
+        if unit_value < crate::zero() {
+            return Err(DiscountError::NegativeValue(format!(
+                "negative <unit_value> {}",
                 unit_value
             )));
         }
 
-        if qty < BigDecimal::zero() {
-            return Err(DiscountError::NegativeQuantity(format!(
-                "negative quantity: {}",
+        if qty < crate::zero() {
+            return Err(DiscountError::NegativeValue(format!(
+                "negative <qty> {}",
                 qty
             )));
         }
 
-        let mut mx_disc = self.max_discount.clone();
-
-        if mx_disc <= BigDecimal::zero() {
-            mx_disc = hundred().clone()
-        }
-
-        let max_discount_value = &unit_value * &mx_disc / hundred();
-        let discounted = (&unit_value * &self.percentual / hundred() + &self.amount_unit) * &qty
+        let discount_value = &unit_value * &qty * &self.percentual / crate::hundred()
+            + &self.amount_unit * &qty
             + &self.amount_line;
 
-        if discounted > max_discount_value {
+        if discount_value > max_discount_allowed {
             return Err(DiscountError::OverMaxDiscount(format!(
-                "[maxdisocuntpercent:{}] [maxdiscount:{}] [calculated discount:{}]",
-                &self.max_discount, max_discount_value, discounted
+                " discount_value {}   max_discount_allowed {}",
+                discount_value, max_discount_allowed
             )));
         }
 
-        Ok(discounted)
+        let percentual_discount = (&unit_value * &qty - &discount_value) / crate::hundred();
+
+        if percentual_discount > crate::hundred() {
+            return Err(DiscountError::OverMaxDiscount(format!(
+                "percentual_discount {}",
+                percentual_discount
+            )));
+        }
+
+        if percentual_discount < crate::zero() {
+            return Err(DiscountError::NegativeValue(format!(
+                "percentual_discount {}",
+                percentual_discount
+            )));
+        }
+
+        Ok((discount_value, percentual_discount))
     }
 
     fn compute_from_str<S: Into<String>>(
         &self,
         unit_value: S,
         qty: S,
-    ) -> Result<BigDecimal, DiscountError> {
-        let opt_uv = BigDecimal::from_str(unit_value.into().as_str());
-
-        match opt_uv {
-            Ok(uv) => {
-                let opt_qty = BigDecimal::from_str(qty.into().as_str());
-
-                match opt_qty {
-                    Ok(q) => self.compute(uv, q),
-                    Err(e) => Err(DiscountError::InvalidDecimal(format!(
-                        "invalid qty in compute_from_str {e}"
-                    ))),
-                }
-            }
-            Err(e) => Err(DiscountError::InvalidDecimal(format!(
-                " invalid unit value in compute_from_str: {e}"
-            ))),
+        max_discount_allowed: Option<S>,
+    ) -> Result<(BigDecimal, BigDecimal), DiscountError<String>> {
+        match BigDecimal::from_str(&unit_value.into()) {
+            Ok(unit_value) => match BigDecimal::from_str(&qty.into()) {
+                Ok(qty) => match max_discount_allowed {
+                    Some(max_discount_allowed) => {
+                        match BigDecimal::from_str(&max_discount_allowed.into()) {
+                            Ok(max_discount_allowed) => {
+                                self.compute(unit_value, qty, Some(max_discount_allowed))
+                            }
+                            Err(err) => Err(DiscountError::InvalidDecimal(format!("{}", err))),
+                        }
+                    }
+                    None => self.compute(unit_value, qty, None),
+                },
+                Err(err) => Err(DiscountError::InvalidDecimal(format!("{}", err))),
+            },
+            Err(err) => Err(DiscountError::InvalidDecimal(format!("{}", err))),
         }
     }
 
@@ -390,90 +441,64 @@ impl DiscountComputer for ComputedDiscount {
         &self,
         discounted: BigDecimal,
         qty: BigDecimal,
-    ) -> Result<BigDecimal, DiscountError> {
-        let wout_line = discounted + &self.amount_line;
-
-        if wout_line < BigDecimal::zero() {
-            return Err(DiscountError::NegativeDiscountable(format!(
-                "negative discountable founded when un_discounting amount_line discount  {}",
-                wout_line
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal), DiscountError<String>> {
+        if discounted < crate::zero() {
+            return Err(DiscountError::NegativeValue(format!(
+                "negative <discounted> {}",
+                discounted
             )));
         }
 
-        let wout_unit = wout_line + (&self.amount_unit * &qty);
-
-        if wout_unit < BigDecimal::zero() {
-            return Err(DiscountError::NegativeDiscountable(format!(
-                "negative discountable founded when un_discounting amount_unit discount {}",
-                wout_unit
+        if qty < crate::zero() {
+            return Err(DiscountError::NegativeValue(format!(
+                "negative <qty> {}",
+                qty
             )));
         }
 
-        let original_discountable = wout_unit / (hundred() - &self.percentual) * hundred() / &qty;
+        let percentual = if self.percentual > crate::zero() {
+            self.percentual.clone()
+        } else {
+            crate::one()
+        };
 
-        Ok(original_discountable)
+        let discountable = (&discounted + &self.amount_line) / &percentual * crate::hundred()
+            + &qty * &self.amount_unit;
+        let percentual_discount = (&discountable - &discounted) * crate::hundred() / &discountable;
+
+        Ok((
+            discountable.clone(),
+            discountable - &discounted,
+            percentual_discount,
+        ))
     }
 
-    fn un_discount_from_f64(&self, discounted: f64, qty: f64) -> Result<BigDecimal, DiscountError> {
-        if discounted < 0.0 {
-            return Err(DiscountError::NegativeDiscount(format!(
-                "inputed discounted value id negative [{discounted}]"
-            )));
-        }
-
-        if qty < 0.0 {
-            return Err(DiscountError::NegativeQuantity(format!(
-                "negative quantity: {qty}"
-            )));
-        }
-
-        let disc = BigDecimal::from_f64(discounted).unwrap();
-        let q = BigDecimal::from_f64(qty).unwrap();
-
-        let wout_line = disc - &self.amount_line;
-
-        if wout_line < BigDecimal::zero() {
-            return Err(DiscountError::NegativeDiscountable(format!(
-                "negative discountable founded when un_discounting amount_line discount  {}",
-                wout_line
-            )));
-        }
-
-        let wout_unit = wout_line - (&self.amount_unit * &q);
-
-        if wout_unit < BigDecimal::zero() {
-            return Err(DiscountError::NegativeDiscountable(format!(
-                "negative discountable founded when un_discounting amount_unit discount {}",
-                wout_unit
-            )));
-        }
-
-        let original_discountable = wout_unit / (hundred() - &self.percentual) * hundred() / &q;
-
-        Ok(original_discountable)
+    fn un_discount_from_f64(
+        &self,
+        discounted: f64,
+        qty: f64,
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal), DiscountError<String>> {
+        self.un_discount(
+            BigDecimal::from_f64(discounted).unwrap_or(crate::inverse()),
+            BigDecimal::from_f64(qty).unwrap_or(crate::inverse()),
+        )
     }
 
     fn un_discount_from_str<S: Into<String>>(
         &self,
         discounted: S,
         qty: S,
-    ) -> Result<BigDecimal, DiscountError> {
-        let opt_uv = BigDecimal::from_str(discounted.into().as_str());
-
-        match opt_uv {
-            Ok(uv) => {
-                let opt_qty = BigDecimal::from_str(qty.into().as_str());
-
-                match opt_qty {
-                    Ok(q) => self.compute(uv, q),
-                    Err(e) => Err(DiscountError::InvalidDecimal(format!(
-                        "invalid qty in un_discount_from_str {e}"
-                    ))),
-                }
-            }
-            Err(e) => Err(DiscountError::InvalidDecimal(format!(
-                " invalid unit value in un_discount_from_str: {e}"
-            ))),
+    ) -> Result<(BigDecimal, BigDecimal, BigDecimal), DiscountError<String>> {
+        match BigDecimal::from_str(&discounted.into()) {
+            Ok(discounted) => match BigDecimal::from_str(&qty.into()) {
+                Ok(qty) => self.un_discount(discounted, qty),
+                Err(err) => Err(DiscountError::InvalidDecimal(format!("{}", err))),
+            },
+            Err(err) => Err(DiscountError::InvalidDecimal(format!("{}", err))),
         }
+    }
+
+    fn ratio(&self, discounted: BigDecimal, discount: BigDecimal) -> BigDecimal {
+        (&discounted - &discount) * crate::hundred() / &discounted
     }
 }
