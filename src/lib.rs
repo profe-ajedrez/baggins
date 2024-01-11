@@ -139,6 +139,19 @@ impl CalculationWithDiscount {
             unit_value,
         }
     }
+
+    pub fn round(&self, scale: i64) -> Self {
+        let scale = if !(0..=128).contains(&scale) { 128 } else { scale };
+        Self { 
+            net: self.net.round(scale), 
+            brute: self.brute.round(scale), 
+            tax: self.tax.round(scale), 
+            discount_value: self.discount_value.round(scale), 
+            discount_brute_value: self.discount_brute_value.round(scale), 
+            total_discount_percent: self.total_discount_percent.round(scale), 
+            unit_value: self.unit_value.clone(), 
+        }
+    }
 }
 
 impl Default for CalculationWithDiscount {
@@ -195,6 +208,16 @@ impl CalculationWithoutDiscount {
             brute,
             tax,
             unit_value,
+        }
+    }
+
+    pub fn round(&self, scale: i64) -> Self {
+        let scale = if !(0..=128).contains(&scale) { 128 } else { scale };
+        Self { 
+            net: self.net.round(scale), 
+            brute: self.brute.round(scale), 
+            tax: self.tax.round(scale), 
+            unit_value: self.unit_value.clone(), 
         }
     }
 }
@@ -346,6 +369,10 @@ pub trait Calculator {
 
     /// calculates and produces a [Calculation] from a [BigDecimal] unit value
     /// and a quantity of the same type
+    /// Receives an [Option<BigDecimal>] to use as a maximum discount value. If [None] the max discount value will be the
+    /// equivalent to the 100% of the calculated brute subtotal. If [Some] will be validated and used the passed value.
+    /// If the unwrapped [BigDecimal] is negative or greater than 100, a Bigdecimal with the 100 value will be used
+    /// as maximum allowed discount.
     fn compute(
         &mut self,
         unit_value: BigDecimal,

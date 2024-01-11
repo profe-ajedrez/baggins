@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0]  - 2024-01-10
+
+* reworks crate reorganizing modules
+
+* tax_stage is not a module anymore
+
+* `taxable` methods were removed
+
+* `scale` params were removed
+
+* `Calculation` struct changed to contain 2 struct with values with and without discount
+
 ## [0.1.10] - 2024-01-05
 
 * Adds field `recalculated_unit_value` to structs `Calculation`, `CalculationF64`, `CalculationString` 
